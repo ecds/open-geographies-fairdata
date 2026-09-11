@@ -61,7 +61,7 @@ RSpec.configure do |config|
   config.after(:suite) do
     DatabaseCleaner.clean_with(:truncation)
 
-    # v1's index names, not a class reference (CoreDataConnector::OpenGeographies::Place.searchkick_index.name,
+    # v1's index names, not a class reference (OpenGeographies::Place.searchkick_index.name,
     # the old v0 stand-in this used to read) - checked with exists? first since
     # most spec runs never actually reindex anything and would otherwise error
     # trying to delete an index that was never created.

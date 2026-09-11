@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 20260826133024) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_184143) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -100,28 +100,6 @@ ActiveRecord::Schema[8.1].define(version: 20260826133024) do
     t.integer "z_media_content_id"
     t.index ["project_model_id"], name: "index_core_data_connector_media_contents_on_project_model_id"
     t.index ["user_defined"], name: "index_core_data_connector_media_contents_on_user_defined", using: :gin
-  end
-
-  create_table "core_data_connector_open_geographies_geonames_hierarchies", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.datetime "fetched_at", null: false
-    t.jsonb "hierarchy", default: [], null: false
-    t.decimal "lat", precision: 10, scale: 6, null: false
-    t.decimal "lng", precision: 10, scale: 6, null: false
-    t.bigint "place_id", null: false
-    t.datetime "updated_at", null: false
-    t.index ["place_id"], name: "index_og_geonames_hierarchies_on_place_id", unique: true
-  end
-
-  create_table "core_data_connector_open_geographies_project_model_roles", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.bigint "project_id", null: false
-    t.bigint "project_model_id", null: false
-    t.string "role", null: false
-    t.datetime "updated_at", null: false
-    t.index ["project_id"], name: "index_og_project_model_roles_on_unique_primary_place", unique: true, where: "((role)::text = 'primary_place'::text)"
-    t.index ["project_model_id", "role"], name: "index_og_project_model_roles_on_project_model_id_and_role", unique: true
-    t.index ["project_model_id"], name: "index_og_project_model_roles_on_project_model_id"
   end
 
   create_table "core_data_connector_organization_names", force: :cascade do |t|
@@ -343,6 +321,21 @@ ActiveRecord::Schema[8.1].define(version: 20260826133024) do
     t.index ["user_id"], name: "index_core_data_connector_user_projects_on_user_id"
   end
 
+  create_table "core_data_connector_users", force: :cascade do |t|
+    t.string "avatar_url"
+    t.datetime "created_at", null: false
+    t.string "email"
+    t.datetime "last_invited_at", precision: nil
+    t.datetime "last_sign_in_at", precision: nil
+    t.string "name"
+    t.string "password_digest"
+    t.boolean "require_password_change", default: false, null: false
+    t.string "role"
+    t.string "sso_id"
+    t.datetime "updated_at", null: false
+    t.index ["sso_id"], name: "index_core_data_connector_users_on_sso_id", unique: true
+  end
+
   create_table "core_data_connector_versions", force: :cascade do |t|
     t.datetime "created_at"
     t.string "event", null: false
@@ -361,21 +354,6 @@ ActiveRecord::Schema[8.1].define(version: 20260826133024) do
     t.index ["request_uuid"], name: "index_core_data_connector_versions_on_request_uuid"
     t.index ["roots"], name: "index_cdc_versions_on_roots", opclass: :jsonb_path_ops, using: :gin
     t.index ["whodunnit"], name: "index_core_data_connector_versions_on_whodunnit"
-  end
-
-  create_table "core_data_connector_users", force: :cascade do |t|
-    t.string "avatar_url"
-    t.datetime "created_at", null: false
-    t.string "email"
-    t.datetime "last_invited_at", precision: nil
-    t.datetime "last_sign_in_at", precision: nil
-    t.string "name"
-    t.string "password_digest"
-    t.boolean "require_password_change", default: false, null: false
-    t.string "role"
-    t.string "sso_id"
-    t.datetime "updated_at", null: false
-    t.index ["sso_id"], name: "index_core_data_connector_users_on_sso_id", unique: true
   end
 
   create_table "core_data_connector_web_authorities", force: :cascade do |t|
@@ -426,6 +404,28 @@ ActiveRecord::Schema[8.1].define(version: 20260826133024) do
     t.datetime "updated_at", null: false
     t.index ["dateable_id", "dateable_type", "attribute_name"], name: "index_fuzzy_dates_dateable_id_dateable_type_attribute_name"
     t.index ["dateable_type", "dateable_id"], name: "index_fuzzy_dates_fuzzy_dates_on_dateable"
+  end
+
+  create_table "open_geographies_geonames_hierarchies", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "fetched_at", null: false
+    t.jsonb "hierarchy", default: [], null: false
+    t.decimal "lat", precision: 10, scale: 6, null: false
+    t.decimal "lng", precision: 10, scale: 6, null: false
+    t.bigint "place_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["place_id"], name: "index_og_geonames_hierarchies_on_place_id", unique: true
+  end
+
+  create_table "open_geographies_project_model_roles", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "project_id", null: false
+    t.bigint "project_model_id", null: false
+    t.string "role", null: false
+    t.datetime "updated_at", null: false
+    t.index ["project_id"], name: "index_og_project_model_roles_on_unique_primary_place", unique: true, where: "((role)::text = 'primary_place'::text)"
+    t.index ["project_model_id", "role"], name: "index_og_project_model_roles_on_project_model_id_and_role", unique: true
+    t.index ["project_model_id"], name: "index_og_project_model_roles_on_project_model_id"
   end
 
   create_table "triple_eye_effable_resource_descriptions", force: :cascade do |t|

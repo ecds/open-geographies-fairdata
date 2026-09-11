@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe('CoreDataConnector::OpenGeographies::V1::Place geojson export') do
+RSpec.describe('OpenGeographies::V1::Place geojson export') do
   let(:project) { create(:project) }
   let(:place_model) { create(:place_model, project:) }
   let(:factory) { RGeo::Geographic.spherical_factory(srid: 4326) }
@@ -10,7 +10,7 @@ RSpec.describe('CoreDataConnector::OpenGeographies::V1::Place geojson export') d
   describe '#geojson_features' do
     it 'returns no features for a place with no geometry' do
       place = create(:place, project_model: place_model, name: 'No Geometry')
-      v1_place = CoreDataConnector::OpenGeographies::V1::Place.find(place.id)
+      v1_place = OpenGeographies::V1::Place.find(place.id)
 
       expect(v1_place.geojson_features).to(eq([]))
     end
@@ -18,7 +18,7 @@ RSpec.describe('CoreDataConnector::OpenGeographies::V1::Place geojson export') d
     it 'returns one real (not centroid-reduced) Feature for a Point, with OG-schema-shaped properties' do
       place = create(:place, project_model: place_model, name: 'Evergreen Church')
       create(:place_geometry, place:, geometry: factory.point(-81.5, 34.5))
-      v1_place = CoreDataConnector::OpenGeographies::V1::Place.find(place.id)
+      v1_place = OpenGeographies::V1::Place.find(place.id)
 
       features = v1_place.geojson_features
       expect(features.size).to(eq(1))
@@ -46,7 +46,7 @@ RSpec.describe('CoreDataConnector::OpenGeographies::V1::Place geojson export') d
       place = create(:place, project_model: place_model, name: 'Multi-Part Feature')
       collection = factory.collection([factory.point(-81.0, 34.0), factory.point(-82.0, 35.0)])
       create(:place_geometry, place:, geometry: collection)
-      v1_place = CoreDataConnector::OpenGeographies::V1::Place.find(place.id)
+      v1_place = OpenGeographies::V1::Place.find(place.id)
 
       features = v1_place.geojson_features
       expect(features.size).to(eq(2))
@@ -66,7 +66,7 @@ RSpec.describe('CoreDataConnector::OpenGeographies::V1::Place geojson export') d
       place = create(:place, project_model: place_model, name: 'Typed Church')
       create(:place_geometry, place:, geometry: factory.point(-81.0, 34.0))
       create(:relationship, project_model_relationship: rel, primary_record: place, related_record: church_type)
-      v1_place = CoreDataConnector::OpenGeographies::V1::Place.find(place.id)
+      v1_place = OpenGeographies::V1::Place.find(place.id)
 
       expect(v1_place.geojson_features.first[:properties][:types]).to(eq(['Church']))
     end
@@ -80,13 +80,13 @@ RSpec.describe('CoreDataConnector::OpenGeographies::V1::Place geojson export') d
       excluded = create(:place, project_model: other_model, name: 'Excluded')
       create(:place_geometry, place: excluded, geometry: factory.point(-82.0, 35.0))
 
-      features = CoreDataConnector::OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+      features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
       expect(features.size).to(eq(1))
       expect(features.first[:properties][:name]).to(eq('Included'))
     end
 
     it 'returns an Enumerator when no block is given' do
-      expect(CoreDataConnector::OpenGeographies::V1::Place.each_geojson_feature(place_model)).to(be_an(Enumerator))
+      expect(OpenGeographies::V1::Place.each_geojson_feature(place_model)).to(be_an(Enumerator))
     end
   end
 end

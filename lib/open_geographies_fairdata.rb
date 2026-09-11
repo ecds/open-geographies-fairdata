@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
-require 'core_data_connector_open_geographies/version'
-require 'core_data_connector_open_geographies/engine'
+require 'open_geographies_fairdata/version'
+require 'open_geographies_fairdata/engine'
 
-module CoreDataConnector
-  module OpenGeographies
-  end
+module OpenGeographies
 end

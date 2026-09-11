@@ -8,9 +8,9 @@ require 'rails_helper'
 # #related can't fully prove once it's gone through indexing/es_mapping.json
 # too - the stops mapping itself was wrong (position/location, which the
 # engine never actually wrote) until this same change fixed it.
-RSpec.describe('CoreDataConnector::OpenGeographies::V1::Tours', type: :request) do
+RSpec.describe('OpenGeographies::V1::Tours', type: :request) do
   after do
-    index = CoreDataConnector::OpenGeographies::V1::Place.searchkick_index
+    index = OpenGeographies::V1::Place.searchkick_index
     index.delete if index.exists?
   end
 
@@ -33,7 +33,7 @@ RSpec.describe('CoreDataConnector::OpenGeographies::V1::Tours', type: :request) 
     create(:relationship, project_model_relationship: stops_rel, primary_record: tour, related_record: second_stop, order: 2)
     create(:relationship, project_model_relationship: stops_rel, primary_record: tour, related_record: first_stop, order: 1)
 
-    CoreDataConnector::OpenGeographies::V1::Instance.reindex(refresh: true)
+    OpenGeographies::V1::Instance.reindex(refresh: true)
 
     get "/open_geographies/v1/#{project_slug}/tours/#{tour.name.parameterize}"
     expect(response).to(have_http_status(:ok))

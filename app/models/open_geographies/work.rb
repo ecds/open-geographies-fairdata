@@ -1,17 +1,15 @@
 # frozen_string_literal: true
 
-module CoreDataConnector
-  module OpenGeographies
-    class Work < ::CoreDataConnector::Work
-      include Searchable
+module OpenGeographies
+  class Work < ::CoreDataConnector::Work
+    include Searchable
 
-      self.table_name = 'core_data_connector_works'
+    self.table_name = 'core_data_connector_works'
 
-      private
+    private
 
-      def extras
-        user_defined_fields
-      end
+    def extras
+      user_defined_fields
     end
   end
 end

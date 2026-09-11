@@ -11,7 +11,7 @@ require 'rails_helper'
 # apart - see V1::Place#slug's own doc comment for the full story.
 RSpec.describe('V1::Place slug disambiguation') do
   around do |example|
-    CoreDataConnector::OpenGeographies::V1::Reindexable.disable { example.run }
+    OpenGeographies::V1::Reindexable.disable { example.run }
   end
 
   let(:project) { create(:project) }
@@ -24,7 +24,7 @@ RSpec.describe('V1::Place slug disambiguation') do
   end
 
   def v1(place)
-    CoreDataConnector::OpenGeographies::V1::Place.find(place.id)
+    OpenGeographies::V1::Place.find(place.id)
   end
 
   it 'falls back to the parameterized name when nothing disambiguates it (no UDF, no Contained In, no geometry)' do

@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe(CoreDataConnector::OpenGeographies::GeonamesHierarchy) do
+RSpec.describe(OpenGeographies::GeonamesHierarchy) do
   # extendedFindNearbyJSON's real shape: a mix of "A" (administrative
   # boundary) and "P" (populated place) features, most-specific-first. Only
   # the "A" ones should survive .fetch - the "P" entry (the city/town

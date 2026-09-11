@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
+RSpec.describe(OpenGeographies::V1::Searchable) do
   # This file tests #search_data's Ruby-hash output directly (see every
   # example below), never real Elasticsearch - unlike places_spec.rb/
   # place_indexing_spec.rb, which explicitly reindex and query a real
@@ -13,13 +13,13 @@ RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
   # try to actually write that into the real index and fail with a mapping
   # conflict having nothing to do with what this file is testing.
   around do |example|
-    CoreDataConnector::OpenGeographies::V1::Reindexable.disable { example.run }
+    OpenGeographies::V1::Reindexable.disable { example.run }
   end
 
   let(:project) { create(:project) }
   let(:place_model) { create(:place_model, project:) }
   let(:place) { create(:place, project_model: place_model, name: 'Evergreen Church') }
-  let(:v1_place) { CoreDataConnector::OpenGeographies::V1::Place.find(place.id) }
+  let(:v1_place) { OpenGeographies::V1::Place.find(place.id) }
 
   describe '#base_search_data' do
     it 'carries the fixed envelope, including model_id (not just model_type/model_name)' do
@@ -40,7 +40,7 @@ RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
       other_project = create(:project, name: 'Administrative Districts')
       other_place_model = create(:place_model, project: other_project)
       other_place = create(:place, project_model: other_place_model, name: 'Grady County')
-      v1_other_place = CoreDataConnector::OpenGeographies::V1::Place.find(other_place.id)
+      v1_other_place = OpenGeographies::V1::Place.find(other_place.id)
 
       data = v1_other_place.base_search_data
       expect(data[:project]).to(eq('administrative-districts'))
@@ -49,7 +49,7 @@ RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
 
     it "reflects an unpublished record's real state, not the old hardcoded placeholder" do
       place.update_published(false)
-      data = CoreDataConnector::OpenGeographies::V1::Place.find(place.id).base_search_data
+      data = OpenGeographies::V1::Place.find(place.id).base_search_data
       expect(data[:visibility]).to(eq('unpublished'))
     end
   end
@@ -62,7 +62,7 @@ RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
     it 'is distinct across models even when the numeric ids match' do
       taxonomy_model = create(:taxonomy_model, project:)
       taxonomy = create(:taxonomy, project_model: taxonomy_model, name: 'Church')
-      v1_taxonomy = CoreDataConnector::OpenGeographies::V1::Taxonomy.find(taxonomy.id)
+      v1_taxonomy = OpenGeographies::V1::Taxonomy.find(taxonomy.id)
 
       # Not asserting place.id == taxonomy.id (Postgres sequences make that
       # unreliable to force) - the real regression is any two models sharing
@@ -110,7 +110,7 @@ RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
       type_udf = create(:user_defined_field, defineable: layer_model, column_name: 'Source Type', data_type: 'Select')
       urls_udf = create(:user_defined_field, defineable: layer_model, column_name: 'Source URLs', data_type: 'String')
       layer_place = create(:place, project_model: layer_model, user_defined: { type_udf.uuid => 'wms', urls_udf.uuid => ['https://example.com/wms'] })
-      v1_map_layer = CoreDataConnector::OpenGeographies::V1::MapLayer.find(layer_place.id)
+      v1_map_layer = OpenGeographies::V1::MapLayer.find(layer_place.id)
 
       expect(v1_map_layer.user_defined_fields[:source]).to(eq({ type: 'wms', urls: ['https://example.com/wms'] }))
     end
@@ -361,7 +361,7 @@ RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
     # out to be aspirational, never actually verified against real
     # behavior. The real key is just the relationship's own name,
     # parameterized and singularized, with no "featured_" prefix at all -
-    # ported faithfully from v0 (CoreDataConnector::OpenGeographies::Searchable#featured
+    # ported faithfully from v0 (OpenGeographies::Searchable#featured
     # does the identical `slug.singularize`, no prefix). For a relationship
     # named "Media" specifically, ActiveSupport's inflector singularizes
     # "media" to "medium" (the singular of "medium/media" in English), which

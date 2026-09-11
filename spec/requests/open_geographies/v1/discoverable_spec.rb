@@ -12,7 +12,7 @@ require 'rails_helper'
 # MapLayers too.
 RSpec.describe('V1 discoverable enforcement', type: :request) do
   after do
-    index = CoreDataConnector::OpenGeographies::V1::Place.searchkick_index
+    index = OpenGeographies::V1::Place.searchkick_index
     index.delete if index.exists?
   end
 
@@ -22,7 +22,7 @@ RSpec.describe('V1 discoverable enforcement', type: :request) do
     place = create(:place, project_model: place_model, name: 'Hidden Church')
     project_slug = project.name.parameterize
 
-    CoreDataConnector::OpenGeographies::V1::Place.reindex(refresh: true)
+    OpenGeographies::V1::Place.reindex(refresh: true)
 
     get "/open_geographies/v1/#{project_slug}/places/#{place.name.parameterize}"
     expect(response).to(have_http_status(:not_found))
@@ -38,7 +38,7 @@ RSpec.describe('V1 discoverable enforcement', type: :request) do
     place = create(:place, project_model: place_model, name: 'Visible Church')
     project_slug = project.name.parameterize
 
-    CoreDataConnector::OpenGeographies::V1::Place.reindex(refresh: true)
+    OpenGeographies::V1::Place.reindex(refresh: true)
 
     get "/open_geographies/v1/#{project_slug}/places/#{place.name.parameterize}"
     expect(response).to(have_http_status(:ok))

@@ -1,5 +1,5 @@
 {
-  "$comment": "Open Geographies canonical Elasticsearch mapping — the index-layer half of the schema (v0.1.0-draft). One mapping serves every atlas: fixed envelope + promoted fields are explicit properties; per-atlas relationships land under their relationship UUID (handled by the related_records dynamic template); per-atlas scalar UDFs land under their field UUID with *_facet companions (handled by facets_as_keyword). Every query is filtered server-side on project_id + visibility — documents from internal-intent fields are never written to this index at all.",
+  "$comment": "Open Geographies canonical Elasticsearch mapping — the index-layer half of the schema (v0.1.0-draft). One mapping serves every atlas: fixed envelope + promoted fields are explicit properties, each with its own uuid/name/etc. sub-fields declared directly. A bespoke, non-promoted relationship (a curator-named relationship with no canonical target) has no explicit property of its own, so its summary object's uuid/record_id/name sub-fields fall to the relationship_uuid/relationship_record_id/relationship_name dynamic templates below - matched by field name wherever they occur in the tree, not by the parent key (relationship keys are name-parameterized now, not UUIDs - see OG_KEYS_REPLY.md; a template matching UUID-shaped keys lived here until this stopped matching anything real). Scalar UDFs (raw {label,value} objects, keyed by their own parameterized column_name) get a *_facet companion only for Select-type fields (searchable.rb#user_defined_fields) - handled by facets_as_keyword, the same mechanism a bespoke taxonomy relationship's own *_facet companion uses. Every query is filtered server-side on project_id + visibility — documents from internal-intent fields are never written to this index at all.",
 
   "settings_comment": "searchkick_search/searchkick_search2 (below, under settings.analysis.analyzer) duplicate og_text rather than aliasing it: passing a custom `settings:` to searchkick() (see V1::Searchable.searchable_index) replaces Searchkick's own generated settings entirely instead of merging with them, but Searchkick's query builder still hardcodes those two analyzer names for any non-'*' search term (searchkick/query.rb) - without them here, a real text query 400s with 'analyzer [searchkick_search] not found'. Keep all three in sync if og_text's tokenizer/filters ever change. (Not `$comment` here - unlike the mappings section, `settings` is sent to Elasticsearch's index-settings API near-verbatim, which rejects unknown setting keys outright.)",
 
@@ -42,18 +42,27 @@
         }
       },
       {
-        "related_records": {
-          "match_mapping_type": "object",
-          "match": "????????-????-????-????-????????????",
+        "relationship_uuid": {
+          "match": "uuid",
+          "match_mapping_type": "string",
+          "mapping": { "type": "keyword" }
+        }
+      },
+      {
+        "relationship_record_id": {
+          "match": "record_id",
+          "match_mapping_type": "string",
+          "mapping": { "type": "keyword" }
+        }
+      },
+      {
+        "relationship_name": {
+          "match": "name",
+          "match_mapping_type": "string",
           "mapping": {
-            "type": "object",
-            "properties": {
-              "uuid": { "type": "keyword" },
-              "record_id": { "type": "keyword" },
-              "name": { "type": "text", "analyzer": "og_text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
-              "name_facet": { "type": "keyword", "ignore_above": 256 },
-              "inverse": { "type": "boolean" }
-            }
+            "type": "text",
+            "analyzer": "og_text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
           }
         }
       },

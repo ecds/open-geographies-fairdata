@@ -5,7 +5,7 @@ FactoryBot.define do
   # project_model_id column + a plain finder method), so this needs an
   # explicit transient + project_model_id=, not FactoryBot's normal
   # association shorthand.
-  factory :project_model_role, class: 'CoreDataConnector::OpenGeographies::ProjectModelRole' do
+  factory :project_model_role, class: 'OpenGeographies::ProjectModelRole' do
     transient do
       project_model_record { create(:place_model) }
     end

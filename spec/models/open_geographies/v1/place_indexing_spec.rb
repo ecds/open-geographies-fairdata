@@ -10,7 +10,7 @@ require 'rails_helper'
 # actual index write can.
 RSpec.describe('V1 Place Elasticsearch indexing') do
   after do
-    index = CoreDataConnector::OpenGeographies::V1::Place.searchkick_index
+    index = OpenGeographies::V1::Place.searchkick_index
     index.delete if index.exists?
   end
 
@@ -28,12 +28,12 @@ RSpec.describe('V1 Place Elasticsearch indexing') do
     udf = create(:user_defined_field, defineable: place_model, column_name: 'Description', data_type: 'RichText')
     place.update!(user_defined: { udf.uuid => 'A historic church.' })
 
-    CoreDataConnector::OpenGeographies::V1::Place.reindex(refresh: true)
+    OpenGeographies::V1::Place.reindex(refresh: true)
 
     # spec/seeds.rb seeds 15 unrelated Place records into the same test DB on
     # every suite start, and .reindex picks all of them up - search by slug,
     # not .first, so this test isn't at the mercy of ES's result ordering.
-    result = CoreDataConnector::OpenGeographies::V1::Place
+    result = OpenGeographies::V1::Place
       .search('*', where: { model_type: 'place', slug: 'evergreen-church' }, load: false)
       .first
 

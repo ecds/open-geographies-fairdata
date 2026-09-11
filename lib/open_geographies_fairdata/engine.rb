@@ -1,34 +1,33 @@
 # frozen_string_literal: true
 
-module CoreDataConnector
-  module OpenGeographies
-    class Engine < ::Rails::Engine
-      require 'rails/all'
-      isolate_namespace CoreDataConnector::OpenGeographies
+module OpenGeographies
+  class Engine < ::Rails::Engine
+    require 'rails/all'
+    isolate_namespace OpenGeographies
 
-      # Without this, `rails db:migrate` in the host app never sees
-      # db/migrate here at all - this engine had no migrations of its own
-      # until ProjectModelRole, so nothing surfaced the gap before now.
-      #
-      # Guards against double-appending by checking the actual path, not by
-      # comparing app.root to the engine's root - a root-path check breaks
-      # for spec/dummy specifically, since it's nested *inside* this engine's
-      # own repo, so app.root.to_s.match?(root.to_s) is true there for the
-      # same reason it's true for any real host app that happens to check
-      # out this gem locally - the string match can't tell "is the same app"
-      # apart from "is a subdirectory of it".
-      initializer :append_migrations do |app|
-        config.paths['db/migrate'].expanded.each do |expanded_path|
-          app.config.paths['db/migrate'] << expanded_path unless app.config.paths['db/migrate'].expanded.include?(expanded_path)
-        end
-      end
+    # No manual `initializer :append_migrations` here (a prior version of
+    # this file had one, with a comment claiming it was required) - Rails
+    # already auto-discovers every Railtie/Engine's own db/migrate via
+    # Rails::Application#migration_railties, confirmed directly
+    # (`Rails.application.migration_railties` lists OpenGeographies::Engine
+    # with this engine's real db/migrate path, unprompted). The manual
+    # append was pure redundancy with that built-in mechanism - and the
+    # redundancy was actively harmful, not just superfluous: db:schema:load
+    # (ActiveRecord::Schema.define -> assume_migrated_upto_version) ends up
+    # combining both sources' contributions into one migrations_paths list
+    # with this engine's path present twice, which reads as two distinct
+    # migrations sharing the same version number and raises "Duplicate
+    # migration". Never caught before because spec/dummy is the only
+    # consumer of this engine's own db/migrate at all (a real host app has
+    # no migrations there to begin with) and this is the first time this
+    # engine's spec suite has actually been run against live Postgres+ES
+    # rather than failing to connect before reaching this code at all.
 
-      # Reapplies on every boot and every Zeitwerk reload in development -
-      # see Decorators' own header comment for why re-running this is safe
-      # and necessary.
-      config.to_prepare do
-        ::CoreDataConnector::OpenGeographies::V1::Decorators.apply!
-      end
+    # Reapplies on every boot and every Zeitwerk reload in development -
+    # see Decorators' own header comment for why re-running this is safe
+    # and necessary.
+    config.to_prepare do
+      ::OpenGeographies::V1::Decorators.apply!
     end
   end
 end

@@ -6,9 +6,9 @@ require 'rails_helper'
 # facet aggregation buckets, pagination metadata, and text-query relevance
 # are exactly the class of behavior a pure-Ruby controller unit test can't
 # prove. This hits the real HTTP route and reads back the real ES response.
-RSpec.describe('CoreDataConnector::OpenGeographies::V1::Places', type: :request) do
+RSpec.describe('OpenGeographies::V1::Places', type: :request) do
   after do
-    index = CoreDataConnector::OpenGeographies::V1::Place.searchkick_index
+    index = OpenGeographies::V1::Place.searchkick_index
     index.delete if index.exists?
   end
 
@@ -47,7 +47,7 @@ RSpec.describe('CoreDataConnector::OpenGeographies::V1::Places', type: :request)
     churches.each { |c| create(:relationship, project_model_relationship: types_rel, primary_record: c, related_record: church_type) }
     schools.each { |s| create(:relationship, project_model_relationship: types_rel, primary_record: s, related_record: school_type) }
 
-    CoreDataConnector::OpenGeographies::V1::Place.reindex(refresh: true)
+    OpenGeographies::V1::Place.reindex(refresh: true)
 
     # --- text search ---
     get "/open_geographies/v1/#{project_slug}/places", params: { q: 'Elementary' }

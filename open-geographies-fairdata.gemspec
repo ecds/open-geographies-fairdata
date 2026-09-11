@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
-require_relative 'lib/core_data_connector_open_geographies/version'
+require_relative 'lib/open_geographies_fairdata/version'
 
 Gem::Specification.new do |spec|
-  spec.name        = 'core_data_connector_open_geographies'
-  spec.version     = CoreDataConnector::OpenGeographies::VERSION
+  spec.name        = 'open_geographies_fairdata'
+  spec.version     = OpenGeographies::VERSION
   spec.authors     = ['Jay Varner']
   spec.email       = ['jayvarner@gmail.com']
-  spec.homepage    = 'https://github.com/ecds'
-  spec.summary     = 'https://github.com/ecds'
-  spec.description = 'OpenGeographies addon engine for CoreDataConnector.'
+  spec.homepage    = 'https://github.com/ecds/open-geographies-fairdata'
+  spec.summary     = 'The Open Geographies canonical schema, v0/v1 API, and Elasticsearch indexing, for a FairData-based Core Data instance.'
+  spec.description = 'Open Geographies engine for FairData (Core Data).'
   spec.license     = 'MIT'
 
   # Prevent pushing this gem to RubyGems.org. To allow pushes either set the "allowed_push_host"
@@ -17,8 +17,8 @@ Gem::Specification.new do |spec|
   spec.metadata['allowed_push_host'] = "TODO: Set to 'http://mygemserver.com'"
 
   spec.metadata['homepage_uri'] = spec.homepage
-  spec.metadata['source_code_uri'] = 'https://github.com/ecds'
-  spec.metadata['changelog_uri'] = 'https://github.com/ecds'
+  spec.metadata['source_code_uri'] = spec.homepage
+  spec.metadata['changelog_uri'] = spec.homepage
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     Dir['{app,config,db,lib}/**/*', 'MIT-LICENSE', 'Rakefile', 'README.md']

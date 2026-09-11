@@ -10,7 +10,7 @@ require 'rails_helper'
 # nothing about whether the after_commit callback actually fired.
 RSpec.describe('V1 Reindexable') do
   after do
-    index = CoreDataConnector::OpenGeographies::V1::Place.searchkick_index
+    index = OpenGeographies::V1::Place.searchkick_index
     index.delete if index.exists?
   end
 
@@ -34,9 +34,9 @@ RSpec.describe('V1 Reindexable') do
     # never sees.
     build_base_place(place_model, 'Base Class Church')
 
-    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    OpenGeographies::V1::Place.searchkick_index.refresh
 
-    result = CoreDataConnector::OpenGeographies::V1::Place
+    result = OpenGeographies::V1::Place
       .search('*', where: { model_type: 'place', slug: 'base-class-church' }, load: false)
       .first
 
@@ -49,12 +49,12 @@ RSpec.describe('V1 Reindexable') do
     place_model = create(:place_model, project:)
     place = build_base_place(place_model, 'Original Name')
 
-    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    OpenGeographies::V1::Place.searchkick_index.refresh
 
     place.place_names.first.update!(name: 'Renamed Church')
-    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    OpenGeographies::V1::Place.searchkick_index.refresh
 
-    result = CoreDataConnector::OpenGeographies::V1::Place
+    result = OpenGeographies::V1::Place
       .search('*', where: { model_type: 'place', slug: 'renamed-church' }, load: false)
       .first
 
@@ -67,16 +67,16 @@ RSpec.describe('V1 Reindexable') do
     place_model = create(:place_model, project:)
     place = build_base_place(place_model, 'Doomed Church')
 
-    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    OpenGeographies::V1::Place.searchkick_index.refresh
     expect(
-      CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'doomed-church' }, load: false).first,
+      OpenGeographies::V1::Place.search('*', where: { slug: 'doomed-church' }, load: false).first,
     ).to(be_present)
 
     place.destroy!
-    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    OpenGeographies::V1::Place.searchkick_index.refresh
 
     expect(
-      CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'doomed-church' }, load: false).first,
+      OpenGeographies::V1::Place.search('*', where: { slug: 'doomed-church' }, load: false).first,
     ).to(be_nil)
   end
 
@@ -91,9 +91,9 @@ RSpec.describe('V1 Reindexable') do
     place.save!
     expect(place.published).to(eq(false))
 
-    index = CoreDataConnector::OpenGeographies::V1::Place.searchkick_index
+    index = OpenGeographies::V1::Place.searchkick_index
     index.refresh if index.exists?
-    result = index.exists? ? CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'unpublished-church' }, load: false).first : nil
+    result = index.exists? ? OpenGeographies::V1::Place.search('*', where: { slug: 'unpublished-church' }, load: false).first : nil
 
     expect(result).to(be_nil)
   end
@@ -103,16 +103,16 @@ RSpec.describe('V1 Reindexable') do
     place_model = create(:place_model, project:)
     place = build_base_place(place_model, 'Soon Unpublished Church')
 
-    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    OpenGeographies::V1::Place.searchkick_index.refresh
     expect(
-      CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'soon-unpublished-church' }, load: false).first,
+      OpenGeographies::V1::Place.search('*', where: { slug: 'soon-unpublished-church' }, load: false).first,
     ).to(be_present)
 
     place.update!(published: false)
-    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    OpenGeographies::V1::Place.searchkick_index.refresh
 
     expect(
-      CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'soon-unpublished-church' }, load: false).first,
+      OpenGeographies::V1::Place.search('*', where: { slug: 'soon-unpublished-church' }, load: false).first,
     ).to(be_nil)
   end
 
@@ -120,23 +120,23 @@ RSpec.describe('V1 Reindexable') do
     project = create(:project)
     place_model = create(:place_model, project:)
 
-    CoreDataConnector::OpenGeographies::V1::Reindexable.disable do
+    OpenGeographies::V1::Reindexable.disable do
       build_base_place(place_model, 'Suspended Church')
     end
 
-    index = CoreDataConnector::OpenGeographies::V1::Place.searchkick_index
+    index = OpenGeographies::V1::Place.searchkick_index
     index.refresh if index.exists?
-    result = index.exists? ? CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'suspended-church' }, load: false).first : nil
+    result = index.exists? ? OpenGeographies::V1::Place.search('*', where: { slug: 'suspended-church' }, load: false).first : nil
     expect(result).to(be_nil)
 
     # A subsequent, unrelated create outside the block still indexes
     # normally - .disable only suspends for its own duration, not globally
     # for the rest of the process.
     build_base_place(place_model, 'Unsuspended Church')
-    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    OpenGeographies::V1::Place.searchkick_index.refresh
 
     expect(
-      CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'unsuspended-church' }, load: false).first,
+      OpenGeographies::V1::Place.search('*', where: { slug: 'unsuspended-church' }, load: false).first,
     ).to(be_present)
   end
 end

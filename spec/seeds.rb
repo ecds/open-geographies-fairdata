@@ -15,4 +15,4 @@ require 'faker'
   end
 end
 
-CoreDataConnector::OpenGeographies::Place.reindex
+OpenGeographies::Place.reindex

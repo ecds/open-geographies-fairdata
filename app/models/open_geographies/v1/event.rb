@@ -1,15 +1,13 @@
 # frozen_string_literal: true
 
-module CoreDataConnector
-  module OpenGeographies
-    module V1
-      class Event < ::CoreDataConnector::Event
-        include Searchable
+module OpenGeographies
+  module V1
+    class Event < ::CoreDataConnector::Event
+      include Searchable
 
-        searchable_index 'open_geographies_v1'
+      searchable_index 'open_geographies_v1'
 
-        self.table_name = 'core_data_connector_events'
-      end
+      self.table_name = 'core_data_connector_events'
     end
   end
 end

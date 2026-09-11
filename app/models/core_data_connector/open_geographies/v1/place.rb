@@ -48,6 +48,37 @@ module CoreDataConnector
           }
         end
 
+        # Disambiguates same-named places (real problem on real data: 35 of
+        # HRCGA's 444 churches share a name with at least one other church,
+        # up to 5-way for "Friendship Baptist") by appending the containing
+        # area's name-derived slug - "friendship-baptist-putnam-county", not
+        # WordPress's numeric "-2" suffix, which carries no information and
+        # isn't stable if import order ever changes.
+        #
+        # #containing_area_slug prefers a curator-built "Contained In"
+        # relationship, falling back to GeoNames reverse-geocoding when one
+        # hasn't been built - checked against real data: 5 of the 35
+        # colliding HRCGA churches have no Contained In relationship at all,
+        # so the GeoNames fallback is load-bearing, not a hypothetical.
+        def slug
+          base = super
+          suffix = containing_area_slug
+          suffix ? "#{base}-#{suffix}" : base
+        end
+
+        # The un-suffixed value stays in `slugs` too (alongside the suffixed
+        # one) so an existing link built before this record ever had a
+        # containing area resolved (or before this feature existed) still
+        # resolves - see Searchable#slugs's own doc comment for why `slugs`
+        # is deliberately more permissive than the single canonical `slug`.
+        def slugs
+          base_slugs = super
+          suffix = containing_area_slug
+          return base_slugs unless suffix
+
+          (base_slugs + base_slugs.map { |candidate| "#{candidate}-#{suffix}" }).uniq
+        end
+
         # One GeoJSON Feature per underlying geometry, not per record: a
         # GeometryCollection (a non-contiguous record - Georgia Coast has
         # 1,766 of them, e.g. a barrier island's separate islets) explodes
@@ -79,6 +110,54 @@ module CoreDataConnector
         end
 
         private
+
+        # GeoNames' fcode vocabulary, most-specific first (see
+        # GeonamesHierarchy) - only ADM1/ADM2/PCLI actually come back from
+        # the reverse-geocoder today, but ranking the full scheme costs
+        # nothing and means a future finer level (ADM3+) is picked up
+        # automatically instead of silently falling through the .fetch
+        # default.
+        GEONAMES_LEVEL_SPECIFICITY = { 'ADM5' => 0, 'ADM4' => 1, 'ADM3' => 2, 'ADM2' => 3, 'ADM1' => 4, 'PCLI' => 5 }.freeze
+
+        # Memoized: #slug, #slugs, and #extras each independently want the
+        # containing-area name for one record's #search_data - without this,
+        # a single index write pays for ST_Centroid three times over.
+        def containing_area_slug
+          @containing_area_slug ||= (contained_in_place&.name || geonames_area_name)&.parameterize
+        end
+
+        # The curator-built hierarchy, resolved the same way #related_to
+        # would for the promoted relationship, but standalone: #slug is
+        # computed as part of #base_search_data, before #related ever runs.
+        # Reads the target's own #name, not its #slug - calling #slug would
+        # recurse into this same suffixing on the target itself and compound
+        # at every level of a hierarchy a curator built deep (county's own
+        # "Contained In" -> state would otherwise turn "putnam-county" into
+        # "putnam-county-georgia", one level deeper than intended).
+        def contained_in_place
+          rel_name = PromotedRelationships.for(self).key(:contained_in_place)
+          return unless rel_name
+
+          rel = ::CoreDataConnector::ProjectModelRelationship.find_by(primary_model: project_model, name: rel_name)
+          return unless rel
+
+          relationship = ::CoreDataConnector::Relationship.find_by(project_model_relationship: rel, primary_record: self)
+          relationship && self.class.find(relationship.related_record_id)
+        end
+
+        # The fallback for a place with geometry but no curated Contained In
+        # relationship - real on HRCGA, not hypothetical (see #slug).
+        def geonames_area_name
+          return unless place_geometry&.geometry
+
+          center = centroid
+          return unless center
+
+          hierarchy = ::CoreDataConnector::OpenGeographies::GeonamesHierarchy.lookup(
+            place_id: id, lat: center['lat'].to_f, lng: center['lon'].to_f,
+          )
+          hierarchy.min_by { |entry| GEONAMES_LEVEL_SPECIFICITY.fetch(entry[:level], 99) }&.dig(:name)
+        end
 
         # Deliberately not #search_data: that calls #extras, which does a
         # live GeoNames HTTP lookup (GeonamesHierarchy.lookup) for any
@@ -124,7 +203,7 @@ module CoreDataConnector
         # which is exactly why CoreDataConnector::Place.centroid_function
         # computes this in SQL rather than Ruby too.
         def centroid
-          ::CoreDataConnector::PlaceGeometry.connection.select_one(
+          @centroid ||= ::CoreDataConnector::PlaceGeometry.connection.select_one(
             ::CoreDataConnector::PlaceGeometry.sanitize_sql_array([
               'SELECT ST_Y(ST_Centroid(geometry)) AS lat, ST_X(ST_Centroid(geometry)) AS lon ' \
                 'FROM core_data_connector_place_geometries WHERE id = ?',

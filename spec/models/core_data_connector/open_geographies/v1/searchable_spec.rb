@@ -46,6 +46,30 @@ RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
       expect(data[:project]).to(eq('administrative-districts'))
       expect(data[:project_id]).to(eq(other_project.id.to_s))
     end
+
+    it "reflects an unpublished record's real state, not the old hardcoded placeholder" do
+      place.update_published(false)
+      data = CoreDataConnector::OpenGeographies::V1::Place.find(place.id).base_search_data
+      expect(data[:visibility]).to(eq('unpublished'))
+    end
+  end
+
+  describe '#search_document_id' do
+    it "is the record's uuid, not its numeric id - the shared index gives every model the same searchable_index, so two different models' numeric ids collide as Searchkick's default ES _id" do
+      expect(v1_place.search_document_id).to(eq(place.uuid))
+    end
+
+    it 'is distinct across models even when the numeric ids match' do
+      taxonomy_model = create(:taxonomy_model, project:)
+      taxonomy = create(:taxonomy, project_model: taxonomy_model, name: 'Church')
+      v1_taxonomy = CoreDataConnector::OpenGeographies::V1::Taxonomy.find(taxonomy.id)
+
+      # Not asserting place.id == taxonomy.id (Postgres sequences make that
+      # unreliable to force) - the real regression is any two models sharing
+      # a search_document_id, so this only needs the ids to differ from each
+      # other's uuids, which they always will.
+      expect(v1_place.search_document_id).not_to(eq(v1_taxonomy.search_document_id))
+    end
   end
 
   describe '#user_defined_fields' do
@@ -100,6 +124,21 @@ RSpec.describe(CoreDataConnector::OpenGeographies::V1::Searchable) do
       create(:relationship, project_model_relationship: rel, primary_record: place, related_record: steward)
 
       expect(v1_place.related[:steward]).to(include(name: 'Friends of the Church'))
+    end
+
+    # should_index? (Reindexable) only gates a record's own top-level
+    # document - #related walks the DB relationship graph directly, not
+    # through Searchkick, so an unpublished related record still appears
+    # nested inside an otherwise-published parent's document. visibility is
+    # exactly how a client is meant to tell the difference and hide it.
+    it "carries an unpublished related record's real visibility in its nested summary, even though it wouldn't get its own top-level document" do
+      publisher_model = create(:place_model, project:, model_class: 'CoreDataConnector::Organization')
+      rel = create(:project_model_relationship, primary_model: place_model, related_model: publisher_model, name: 'Steward', multiple: false)
+      steward = create(:organization, project_model: publisher_model, name: 'Friends of the Church')
+      steward.update_published(false)
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: steward)
+
+      expect(v1_place.related[:steward][:visibility]).to(eq('unpublished'))
     end
 
     # Regression: this used to be the one case the old code got wrong - a

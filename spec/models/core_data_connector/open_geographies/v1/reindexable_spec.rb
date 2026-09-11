@@ -80,6 +80,42 @@ RSpec.describe('V1 Reindexable') do
     ).to(be_nil)
   end
 
+  it 'never indexes a record created with published: false' do
+    # Publishable#set_published (before_validation on: :create) sets
+    # `published` from the project's own default_to_published - it can't be
+    # set directly on .new, only by controlling that default.
+    project = create(:project, default_to_published: false)
+    place_model = create(:place_model, project:)
+    place = CoreDataConnector::Place.new(project_model: place_model, user_defined: {})
+    place.place_names.build(name: 'Unpublished Church', primary: true)
+    place.save!
+    expect(place.published).to(eq(false))
+
+    index = CoreDataConnector::OpenGeographies::V1::Place.searchkick_index
+    index.refresh if index.exists?
+    result = index.exists? ? CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'unpublished-church' }, load: false).first : nil
+
+    expect(result).to(be_nil)
+  end
+
+  it 'removes an indexed record from the index when it is unpublished' do
+    project = create(:project)
+    place_model = create(:place_model, project:)
+    place = build_base_place(place_model, 'Soon Unpublished Church')
+
+    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+    expect(
+      CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'soon-unpublished-church' }, load: false).first,
+    ).to(be_present)
+
+    place.update!(published: false)
+    CoreDataConnector::OpenGeographies::V1::Place.searchkick_index.refresh
+
+    expect(
+      CoreDataConnector::OpenGeographies::V1::Place.search('*', where: { slug: 'soon-unpublished-church' }, load: false).first,
+    ).to(be_nil)
+  end
+
   it 'suspends indexing for the duration of .disable, with nothing indexed until a later manual reindex' do
     project = create(:project)
     place_model = create(:place_model, project:)

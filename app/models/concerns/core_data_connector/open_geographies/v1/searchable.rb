@@ -110,6 +110,19 @@ module CoreDataConnector
         # through assign_unique! against the accumulating hash, since Core
         # Data enforces no uniqueness on those names at all - see
         # assign_unique! for why that matters.
+        # Searchkick defaults to the record's own numeric id for the ES _id,
+        # which collides across models in this engine's one-shared-index
+        # design (every V1:: class writes to 'open_geographies_v1' via the
+        # same searchable_index call) - a Place 1 and a Taxonomy term 1
+        # silently overwrite each other. Reproduced in production: reindexing
+        # a project's 4 Places + 2 Types left 4 documents, not 6. uuid is
+        # already globally unique per record (Identifiable) and is what
+        # clients address records by, so it's the natural _id, not a
+        # constructed "#{model_type}:#{id}" string.
+        def search_document_id
+          uuid
+        end
+
         def search_data
           data = { **base_search_data, **extras }
 
@@ -142,7 +155,7 @@ module CoreDataConnector
             model_id: project_model.id.to_s,
             model_name: project_model.name,
             name:,
-            visibility: 'published', # no draft/suppress concept in CoreDataConnector today - placeholder until one exists
+            visibility:,
             date_modified: updated_at&.iso8601,
             identifiers:,
           }
@@ -397,9 +410,35 @@ module CoreDataConnector
           featured_recs
         end
 
+        # CoreDataConnector::Publishable's own `published` column
+        # (controllable per-record through the FairData UI), exposed as this
+        # API's visibility state - 'published'/'unpublished', matching
+        # Publishable's own scope names (`scope :published`/
+        # `scope :unpublished`) rather than inventing separate vocabulary.
+        # No longer a placeholder - see should_index?'s own comment for how
+        # published now gates indexing directly. Still needed as its own
+        # field, not made redundant by that gate: #related/#related_to walk
+        # the DB relationship graph directly, not through Searchkick's
+        # should_index? filter, so an unpublished record can still appear
+        # *nested* inside an otherwise-published parent's own document. A
+        # client needs this to know to hide an embedded item its parent's
+        # own top-level gate didn't catch.
+        def visibility
+          respond_to?(:published) && !published ? 'unpublished' : 'published'
+        end
+
+        # Falls back to the parameterized name both when there's no Slug UDF
+        # on the model at all, and when there is one but this particular
+        # record's value is blank - found live on HRCGA: some churches have
+        # never had a WordPress slug recorded (`user_defined[uuid]` is nil,
+        # not just absent from the model), which used to make this method
+        # return nil outright rather than degrade to the same fallback
+        # #slugs already applies via its own `.compact` + always-appended
+        # `name.parameterize`.
         def slug
           ud_slug = project_model.user_defined_fields.find { |ud| ud.column_name.downcase.include?('slug') }
-          ud_slug.nil? ? name.parameterize : user_defined[ud_slug.uuid]
+          value = ud_slug && user_defined[ud_slug.uuid]
+          value.presence || name.parameterize
         end
 
         def slugs
@@ -408,6 +447,36 @@ module CoreDataConnector
             .map { |ud| user_defined[ud.uuid] }
 
           [*ud_slugs, name.parameterize].compact.uniq
+        end
+
+        # Gates what Searchkick actually indexes - a record with published:
+        # false is excluded from a full reindex, and removed by the
+        # Reindexable decorator's on-save trigger the moment it's unpublished
+        # (its own after_commit fires on every update regardless of which
+        # column changed, and Searchkick's RecordIndexer#index_record? checks
+        # should_index? the same way it checks destroyed? - false routes to
+        # the same bulk_delete path, not just a skipped index write).
+        #
+        # Deliberately NOT overridden here - this must be defined directly in
+        # Searchable, included before `searchable_index` runs in each V1::
+        # class body, not in Reindexable (included on the base classes later,
+        # via Decorators.apply! in config.to_prepare). Searchkick's own
+        # `searchkick` macro only defines its generic always-true
+        # should_index? "unless base.method_defined?(:should_index?)" at the
+        # moment searchable_index is called - in production, eager loading
+        # (which runs searchable_index for every V1:: class) happens before
+        # to_prepare, so a Reindexable-based definition would already have
+        # lost that race and been silently shadowed by Searchkick's own
+        # unconditional version living closer in V1::Place's own ancestor
+        # chain. Defining it here, in the module included immediately before
+        # searchable_index in the same class body, has no such ordering risk.
+        #
+        # respond_to? rather than assuming every model has the column: true
+        # for all 9 reindexed models as of this writing (confirmed against
+        # the schema directly), but this stays correct if a future
+        # searchable model doesn't have it, rather than raising.
+        def should_index?
+          respond_to?(:published) ? published : true
         end
 
         private

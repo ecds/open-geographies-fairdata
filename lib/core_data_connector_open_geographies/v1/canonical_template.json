@@ -1,7 +1,7 @@
 {
   "name": "Open Geographies — canonical atlas template",
-  "version": "0.2.0-draft",
-  "changelog": "0.2.0: added Places' 'Address' UDF (promote: address) - closes the previously-unreachable address mapping gap; structured geo faceting is administrative_area's job instead, derived server-side from the centroid, not curator-entered.",
+  "version": "0.3.0",
+  "changelog": "0.3.0: converges this copy with the og_schema/ mirror's 0.2.1 delta - Map Layers' 'Preview' and Tours' 'Thumbnail' now promote to 'preview_media' instead of 'preview', fixing a duplicate-key collision with MediaContent#extras' own scalar 'preview' URL field. From this version, this file (not og_schema/) is the canonical copy. 0.2.0: added Places' 'Address' UDF (promote: address) - closes the previously-unreachable address mapping gap; structured geo faceting is administrative_area's job instead, derived server-side from the centroid, not curator-entered.",
   "$comment": "The authoring layer of the OG canonical schema: the project_models the wizard creates. Format matches a Core Data project export (name / project_models / user_defined_fields / project_model_relationships) so it can be diffed against 'Georgia Coast Atlas schema.json' directly. OG extensions live under 'og' keys: og.promote maps a UDF or relationship onto a well-known envelope field the renderer depends on by name; og.intent marks field visibility (internal fields are never publicly indexed or rendered); og.optional marks modules an atlas may skip. Numeric ids are omitted — they are assigned at creation; relationships reference models by 'related_model' name.",
 
   "project_models": [
@@ -133,7 +133,7 @@
       ],
       "project_model_relationships": [
         { "name": "Preview", "related_model": "Media", "multiple": false, "allow_inverse": false,
-          "og": { "promote": "preview", "$comment": "GCA's separate Map Preview model folds into Media." } },
+          "og": { "promote": "preview_media", "$comment": "GCA's separate Map Preview model folds into Media. Promoted key renamed from 'preview' in 0.3.0 - it collided with MediaContent#extras' own scalar 'preview' URL field on the nested Media summary this relationship resolves to." } },
         { "name": "Publisher", "related_model": "Organizations", "multiple": false, "allow_inverse": true, "inverse_name": "Map Layers",
           "og": { "promote": "publisher" } }
       ]
@@ -169,7 +169,7 @@
         { "name": "Stops", "related_model": "Places", "multiple": true, "allow_inverse": true, "inverse_name": "Tours",
           "og": { "promote": "stops" } },
         { "name": "Thumbnail", "related_model": "Media", "multiple": false, "allow_inverse": false,
-          "og": { "promote": "preview" } }
+          "og": { "promote": "preview_media" } }
       ]
     }
   ]

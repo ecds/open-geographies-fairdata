@@ -24,6 +24,13 @@ Gem::Specification.new do |spec|
     Dir['{app,config,db,lib}/**/*', 'MIT-LICENSE', 'Rakefile', 'README.md']
   end
 
+  # aws-sdk-s3/aws-sdk-cloudfront: og_pmtiles.rake's own S3 upload + CDN
+  # invalidation, moved here from core-data-cloud along with the task
+  # itself - "any FairData-backed host gets PMTiles export for free" only
+  # holds if this engine brings its own runtime dependencies rather than
+  # assuming the host app happens to already have them bundled.
+  spec.add_dependency('aws-sdk-cloudfront', '~> 1')
+  spec.add_dependency('aws-sdk-s3', '~> 1')
   spec.add_dependency('elasticsearch', '~> 8')
   spec.add_dependency('rails', '>= 8.0.2')
   spec.add_dependency('rgeo-geojson', '~> 2.2')

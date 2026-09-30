@@ -31,9 +31,21 @@ RSpec.describe('OpenGeographies::V1::Place geojson export') do
         slug: 'evergreen-church',
         name: 'Evergreen Church',
         model_type: 'place',
+        model_id: place_model.id.to_s,
+        model_name: place_model.name,
         project: project.name.parameterize,
         types: [],
+        admin_level: nil,
       }))
+    end
+
+    it 'reads admin_level from the generic "Admin Level" UDF, same mechanism as any other UDF' do
+      udf = create(:user_defined_field, defineable: place_model, column_name: 'Admin Level', data_type: 'Select')
+      place = create(:place, project_model: place_model, name: 'Putnam County', user_defined: { udf.uuid => 'ADM2' })
+      create(:place_geometry, place:, geometry: factory.point(-83.0, 32.5))
+      v1_place = OpenGeographies::V1::Place.find(place.id)
+
+      expect(v1_place.geojson_features.first[:properties][:admin_level]).to(eq('ADM2'))
     end
 
     # Regression coverage for the actual reason this exists: #extras (used
@@ -87,6 +99,287 @@ RSpec.describe('OpenGeographies::V1::Place geojson export') do
 
     it 'returns an Enumerator when no block is given' do
       expect(OpenGeographies::V1::Place.each_geojson_feature(place_model)).to(be_an(Enumerator))
+    end
+
+    # This pipeline's output is uploaded straight to a public S3 bucket -
+    # unlike the ES index, nothing else stands between an unpublished
+    # record and the public unless this query enforces it itself.
+    it 'excludes an unpublished place, matching should_index?' do
+      published = create(:place, project_model: place_model, name: 'Published Church')
+      create(:place_geometry, place: published, geometry: factory.point(-81.0, 34.0))
+      unpublished = create(:place, project_model: place_model, name: 'Draft Church')
+      create(:place_geometry, place: unpublished, geometry: factory.point(-82.0, 35.0))
+      unpublished.update!(published: false)
+
+      features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+      expect(features.map { |f| f[:properties][:name] }).to(eq(['Published Church']))
+    end
+
+    # A place's Contained In target (a county boundary a church belongs to,
+    # say) is usually not itself a member of the project_model being
+    # exported - often not even the same project (the "Administrative
+    # Areas" pattern from this session) - so it would never appear in this
+    # export on its own. Pulling it in is the actual point of these specs.
+    describe "a place's Contained In target" do
+      def build_contained_in_setup(area_geometry)
+        county_model = create(:place_model, project:)
+        county = create(:place, project_model: county_model, name: 'Putnam County')
+        create(:place_geometry, place: county, geometry: area_geometry)
+        rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+        church = create(:place, project_model: place_model, name: 'Friendship Baptist')
+        create(:place_geometry, place: church, geometry: factory.point(-83.0, 32.5))
+        create(:relationship, project_model_relationship: rel, primary_record: church, related_record: county)
+        church
+      end
+
+      it "includes the target's own polygon feature, marked contained_in: true" do
+        polygon = factory.polygon(factory.linear_ring([
+          factory.point(-83.6, 32.4),
+          factory.point(-83.4, 32.4),
+          factory.point(-83.4, 32.6),
+          factory.point(-83.6, 32.6),
+          factory.point(-83.6, 32.4),
+        ]))
+        build_contained_in_setup(polygon)
+
+        features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+        admin_features = features.select { |f| f[:properties][:contained_in] }
+
+        expect(admin_features.size).to(eq(1))
+        expect(admin_features.first[:properties][:name]).to(eq('Putnam County'))
+        expect(admin_features.first[:geometry]['type']).to(eq('Polygon'))
+      end
+
+      # Load-bearing, not decoration: verified empirically (see this
+      # method's own doc comment) that og_pmtiles.rake's
+      # --drop-densest-as-needed thins ALL points in the tile together
+      # regardless of how "important" one is, and at a whole-state zoom
+      # most of Georgia's 29 counties never made it into the tile at all
+      # without this pin - no MapLibre style setting can render a feature
+      # tippecanoe never included. Deliberately NOT applied to an ordinary
+      # place - a 5,000+-point atlas like Georgia Coast still wants real
+      # density thinning for its own places; only the small, bounded set
+      # of admin areas should be exempt from it.
+      it 'pins every admin-area feature to tippecanoe.minzoom: 0, exempting it from density-based tile thinning' do
+        polygon = factory.polygon(factory.linear_ring([
+          factory.point(-83.6, 32.4),
+          factory.point(-83.4, 32.4),
+          factory.point(-83.4, 32.6),
+          factory.point(-83.6, 32.6),
+          factory.point(-83.6, 32.4),
+        ]))
+        build_contained_in_setup(polygon)
+
+        features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+        church_feature = features.find { |f| f[:properties][:name] == 'Friendship Baptist' }
+        county_feature = features.find { |f| f[:properties][:name] == 'Putnam County' }
+
+        expect(county_feature[:tippecanoe]).to(eq({ minzoom: 0 }))
+        expect(church_feature).not_to(have_key(:tippecanoe))
+      end
+
+      # model_id/model_name are how a client tells a --place-model feature
+      # apart from a walked-in Contained In one by more than the presence
+      # of `contained_in` - they name which project_model each side
+      # actually came from, since a Contained In chain can pass through a
+      # project_model that isn't the one og_pmtiles was asked to export.
+      it "tags the church with --place-model's own project_model, and the county with its own, different one" do
+        polygon = factory.polygon(factory.linear_ring([
+          factory.point(-83.6, 32.4),
+          factory.point(-83.4, 32.4),
+          factory.point(-83.4, 32.6),
+          factory.point(-83.6, 32.6),
+          factory.point(-83.6, 32.4),
+        ]))
+        build_contained_in_setup(polygon)
+
+        features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+        church_feature = features.find { |f| f[:properties][:name] == 'Friendship Baptist' }
+        county_feature = features.find { |f| f[:properties][:name] == 'Putnam County' }
+
+        expect(church_feature[:properties][:model_id]).to(eq(place_model.id.to_s))
+        expect(church_feature[:properties][:model_name]).to(eq(place_model.name))
+        expect(county_feature[:properties][:model_id]).not_to(eq(place_model.id.to_s))
+      end
+
+      it "includes a county's leftover Point alongside its boundary - a client's label layer needs somewhere to anchor text" do
+        polygon_ring = factory.linear_ring([
+          factory.point(-83.6, 32.4),
+          factory.point(-83.4, 32.4),
+          factory.point(-83.4, 32.6),
+          factory.point(-83.6, 32.6),
+          factory.point(-83.6, 32.4),
+        ])
+        collection = factory.collection([factory.point(-83.5, 32.5), factory.polygon(polygon_ring)])
+        build_contained_in_setup(collection)
+
+        features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+        admin_features = features.select { |f| f[:properties][:contained_in] }
+
+        expect(admin_features.map { |f| f[:geometry]['type'] }).to(contain_exactly('Point', 'Polygon'))
+        expect(admin_features.map { |f| f[:properties][:name] }).to(eq(['Putnam County', 'Putnam County']))
+      end
+
+      it 'is not duplicated when multiple places in the export share the same containing area' do
+        county_model = create(:place_model, project:)
+        county = create(:place, project_model: county_model, name: 'Putnam County')
+        create(:place_geometry, place: county, geometry: factory.polygon(factory.linear_ring([
+          factory.point(-83.6, 32.4),
+          factory.point(-83.4, 32.4),
+          factory.point(-83.4, 32.6),
+          factory.point(-83.6, 32.6),
+          factory.point(-83.6, 32.4),
+        ])))
+        rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+
+        ['Friendship Baptist', 'Salem Methodist'].each do |name|
+          church = create(:place, project_model: place_model, name:)
+          create(:place_geometry, place: church, geometry: factory.point(-83.0, 32.5))
+          create(:relationship, project_model_relationship: rel, primary_record: church, related_record: county)
+        end
+
+        features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+        admin_features = features.select { |f| f[:properties][:contained_in] }
+
+        expect(admin_features.size).to(eq(1))
+      end
+
+      it "excludes the target when it's unpublished, same reason as the place itself" do
+        county_model = create(:place_model, project:)
+        county = create(:place, project_model: county_model, name: 'Putnam County')
+        create(:place_geometry, place: county, geometry: factory.polygon(factory.linear_ring([
+          factory.point(-83.6, 32.4),
+          factory.point(-83.4, 32.4),
+          factory.point(-83.4, 32.6),
+          factory.point(-83.6, 32.6),
+          factory.point(-83.6, 32.4),
+        ])))
+        county.update!(published: false)
+        rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+        church = create(:place, project_model: place_model, name: 'Friendship Baptist')
+        create(:place_geometry, place: church, geometry: factory.point(-83.0, 32.5))
+        create(:relationship, project_model_relationship: rel, primary_record: church, related_record: county)
+
+        features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+
+        expect(features.none? { |f| f[:properties][:contained_in] }).to(be(true))
+      end
+
+      it 'emits nothing extra for a place with no Contained In relationship' do
+        place = create(:place, project_model: place_model, name: 'Unlinked Church')
+        create(:place_geometry, place:, geometry: factory.point(-81.0, 34.0))
+
+        features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+
+        expect(features.none? { |f| f[:properties][:contained_in] }).to(be(true))
+      end
+
+      def square_polygon
+        factory.polygon(factory.linear_ring([
+          factory.point(-83.6, 32.4),
+          factory.point(-83.4, 32.4),
+          factory.point(-83.4, 32.6),
+          factory.point(-83.6, 32.6),
+          factory.point(-83.6, 32.4),
+        ]))
+      end
+
+      describe 'walking the whole chain, not just the immediate target' do
+        it "includes the county's own Contained In target too (the state), not just the county" do
+          state_model = create(:place_model, project:)
+          state = create(:place, project_model: state_model, name: 'Georgia')
+          create(:place_geometry, place: state, geometry: square_polygon)
+
+          county_model = create(:place_model, project:)
+          county = create(:place, project_model: county_model, name: 'Putnam County')
+          create(:place_geometry, place: county, geometry: square_polygon)
+          county_rel = create(:project_model_relationship, primary_model: county_model, related_model: state_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+          create(:relationship, project_model_relationship: county_rel, primary_record: county, related_record: state)
+
+          church_rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+          church = create(:place, project_model: place_model, name: 'Friendship Baptist')
+          create(:place_geometry, place: church, geometry: factory.point(-83.0, 32.5))
+          create(:relationship, project_model_relationship: church_rel, primary_record: church, related_record: county)
+
+          features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+          admin_names = features.select { |f| f[:properties][:contained_in] }.map { |f| f[:properties][:name] }
+
+          expect(admin_names).to(contain_exactly('Putnam County', 'Georgia'))
+        end
+
+        it 'emits the shared state exactly once across many places in different counties, not once per county' do
+          state_model = create(:place_model, project:)
+          state = create(:place, project_model: state_model, name: 'Georgia')
+          create(:place_geometry, place: state, geometry: square_polygon)
+
+          county_model = create(:place_model, project:)
+          county_rel = create(:project_model_relationship, primary_model: county_model, related_model: state_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+          church_rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+
+          ['Putnam County', 'Sumter County'].each do |county_name|
+            county = create(:place, project_model: county_model, name: county_name)
+            create(:place_geometry, place: county, geometry: square_polygon)
+            create(:relationship, project_model_relationship: county_rel, primary_record: county, related_record: state)
+
+            church = create(:place, project_model: place_model, name: "Church in #{county_name}")
+            create(:place_geometry, place: church, geometry: factory.point(-83.0, 32.5))
+            create(:relationship, project_model_relationship: church_rel, primary_record: church, related_record: county)
+          end
+
+          features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+          admin_features = features.select { |f| f[:properties][:contained_in] }
+
+          expect(admin_features.map { |f| f[:properties][:name] }).to(contain_exactly('Putnam County', 'Sumter County', 'Georgia'))
+        end
+
+        it "keeps walking past an unpublished county to reach the state above it, even though the county itself isn't emitted" do
+          state_model = create(:place_model, project:)
+          state = create(:place, project_model: state_model, name: 'Georgia')
+          create(:place_geometry, place: state, geometry: square_polygon)
+
+          county_model = create(:place_model, project:)
+          county = create(:place, project_model: county_model, name: 'Putnam County')
+          create(:place_geometry, place: county, geometry: square_polygon)
+          county.update!(published: false)
+          county_rel = create(:project_model_relationship, primary_model: county_model, related_model: state_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+          create(:relationship, project_model_relationship: county_rel, primary_record: county, related_record: state)
+
+          church_rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+          church = create(:place, project_model: place_model, name: 'Friendship Baptist')
+          create(:place_geometry, place: church, geometry: factory.point(-83.0, 32.5))
+          create(:relationship, project_model_relationship: church_rel, primary_record: church, related_record: county)
+
+          features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a
+          admin_names = features.select { |f| f[:properties][:contained_in] }.map { |f| f[:properties][:name] }
+
+          expect(admin_names).to(eq(['Georgia']))
+        end
+
+        it "doesn't hang on a malformed Contained In cycle" do
+          county_model = create(:place_model, project:)
+          county_a = create(:place, project_model: county_model, name: 'County A')
+          create(:place_geometry, place: county_a, geometry: square_polygon)
+          county_b = create(:place, project_model: county_model, name: 'County B')
+          create(:place_geometry, place: county_b, geometry: square_polygon)
+
+          rel = create(:project_model_relationship, primary_model: county_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+          create(:relationship, project_model_relationship: rel, primary_record: county_a, related_record: county_b)
+          create(:relationship, project_model_relationship: rel, primary_record: county_b, related_record: county_a)
+
+          church_rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+          church = create(:place, project_model: place_model, name: 'Friendship Baptist')
+          create(:place_geometry, place: church, geometry: factory.point(-83.0, 32.5))
+          create(:relationship, project_model_relationship: church_rel, primary_record: church, related_record: county_a)
+
+          features = nil
+          expect do
+            Timeout.timeout(5) { features = OpenGeographies::V1::Place.each_geojson_feature(place_model).to_a }
+          end.not_to(raise_error)
+
+          admin_names = features.select { |f| f[:properties][:contained_in] }.map { |f| f[:properties][:name] }
+          expect(admin_names).to(contain_exactly('County A', 'County B'))
+        end
+      end
     end
   end
 end

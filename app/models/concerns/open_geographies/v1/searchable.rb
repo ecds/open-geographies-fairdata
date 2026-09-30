@@ -205,7 +205,26 @@ module OpenGeographies
           next if user_defined_field.nil?
 
           label = user_defined_field.column_name
-          written_key = assign_unique!(attributes, label.parameterize.underscore.to_sym, { label:, value: })
+          parameterized_key = label.parameterize.underscore.to_sym
+
+          # A "Slug" UDF's raw value is already represented by the record's
+          # own #slugs (V1::Place#slug/#slugs already read this exact UDF
+          # directly, by column_name match, independent of the promotion
+          # system - it's not a canonical/promoted key at all, confirmed
+          # against canonical_template.json). Writing it again here under
+          # the identical :slug key would just collide with
+          # #base_search_data's own `slug:` entry, and assign_unique!
+          # suffixes on ANY collision regardless of value - producing a
+          # spurious `slug_2` with no new information. Checked against the
+          # whole `slugs` family, not just equality with the single
+          # canonical `slug` - real once a record's own slug carries a
+          # disambiguation suffix (V1::Place#slug) the raw UDF value no
+          # longer equals it but still matches one of the un-suffixed
+          # alternates in `slugs`, and still deserves this skip for the
+          # same reason.
+          next if parameterized_key == :slug && record.respond_to?(:slugs) && record.slugs.include?(value)
+
+          written_key = assign_unique!(attributes, parameterized_key, { label:, value: })
 
           # A *_facet companion for a curator-picked Select UDF (SearchCollection#facet_field_uuids'
           # actual point) - same mechanism a bespoke taxonomy relationship's own *_facet
@@ -251,8 +270,8 @@ module OpenGeographies
       # PromotedRelationships.for(self)) *additionally* get the identical
       # value written under their well-known canonical key.
       #
-      # Regression: a non-canonically-named taxonomy relationship (e.g.
-      # HRCGA's "Denomination", never in PromotedRelationships since only
+      # Regression: a non-canonically-named taxonomy relationship, never in
+      # PromotedRelationships since only
       # "Types" is canonical) used to always get the full depth-limited
       # summary shape here, never the bare-name shortcut - that shortcut
       # only ever ran inside the *promoted* write, so "Types" only ended up
@@ -291,9 +310,18 @@ module OpenGeographies
             records = ::CoreDataConnector::Relationship.where(project_model_relationship: rel, primary_record: self).order(:order)
             next if records.empty?
 
+            # find_by, not find - a Relationship row surviving its own
+            # related_record's deletion is real, not hypothetical (Steve's
+            # own connector patch #4 found it independently on the
+            # importer side: "indexer skips relationship rows whose
+            # record was deleted"). find raises RecordNotFound for a
+            # dangling row, which would take down this record's entire
+            # #search_data, not just the one stale relationship.
             pairs = records.filter_map do |relation|
-              item = related_class(relation.related_record_type).find(relation.related_record_id)
-              [relation, item] unless visited.include?(record_identity(item))
+              item = related_class(relation.related_record_type).find_by(id: relation.related_record_id)
+              next if item.nil? || visited.include?(record_identity(item))
+
+              [relation, item]
             end
             next if pairs.empty?
 
@@ -304,8 +332,8 @@ module OpenGeographies
             relation = ::CoreDataConnector::Relationship.find_by(project_model_relationship: rel, primary_record: self)
             next if relation.nil?
 
-            item = related_class(relation.related_record_type).find(relation.related_record_id)
-            next if visited.include?(record_identity(item))
+            item = related_class(relation.related_record_type).find_by(id: relation.related_record_id)
+            next if item.nil? || visited.include?(record_identity(item))
 
             value = relationship_value(item, rel, depth, visited)
           end
@@ -369,7 +397,11 @@ module OpenGeographies
             records = ::CoreDataConnector::Relationship.where(project_model_relationship: rel, related_record: self)
             next if records.empty?
 
-            items = records.map { |relation| related_class(relation.primary_record_type).find(relation.primary_record_id) }
+            # find_by, not find - same reasoning as #related above: a
+            # dangling Relationship row (its primary_record deleted, the
+            # row itself not cleaned up) must be skipped, not raise and
+            # take down this record's entire #search_data.
+            items = records.filter_map { |relation| related_class(relation.primary_record_type).find_by(id: relation.primary_record_id) }
             items = items.reject { |item| visited.include?(record_identity(item)) }
             next if items.empty?
 
@@ -378,8 +410,8 @@ module OpenGeographies
             relation = ::CoreDataConnector::Relationship.find_by(project_model_relationship: rel, related_record: self)
             next if relation.nil?
 
-            item = related_class(relation.primary_record_type).find(relation.primary_record_id)
-            next if visited.include?(record_identity(item))
+            item = related_class(relation.primary_record_type).find_by(id: relation.primary_record_id)
+            next if item.nil? || visited.include?(record_identity(item))
 
             value = summarize(item, depth, visited)
           end
@@ -440,9 +472,7 @@ module OpenGeographies
 
       # Falls back to the parameterized name both when there's no Slug UDF
       # on the model at all, and when there is one but this particular
-      # record's value is blank - found live on HRCGA: some churches have
-      # never had a WordPress slug recorded (`user_defined[uuid]` is nil,
-      # not just absent from the model), which used to make this method
+      # record's value is blank, which used to make this method
       # return nil outright rather than degrade to the same fallback
       # #slugs already applies via its own `.compact` + always-appended
       # `name.parameterize`.
@@ -499,16 +529,6 @@ module OpenGeographies
       # further relationship expansion (this is what actually stops the
       # recursion, unlike v0's equivalent). Above 0, one more layer of that
       # record's own relationships too.
-      #
-      # user_defined_fields wasn't included here at all until this was
-      # caught while wiring up the HRCGA WordPress template: a nested
-      # Work's own "Link" UDF promotes to `url` correctly at the top level
-      # (verified against real data), but every nested summary - works[],
-      # media[], contained_in_place, anything summarize touches - silently
-      # dropped every UDF, raw or promoted, forever, regardless of depth.
-      # Goes through assign_unique! same as search_data, since a record's
-      # own UDFs/relationships can collide with its own base_search_data
-      # keys exactly the same way they can at the top level.
       #
       # `visited` defaults to just `record` itself - the entry point for a
       # summary reached via #related/#related_to below, or the very first

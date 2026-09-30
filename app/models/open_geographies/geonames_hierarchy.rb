@@ -26,6 +26,9 @@ module OpenGeographies
     # since that's redundant with the OG place's own name.
     ADMIN_FEATURE_CLASS = 'A'
     TIMEOUT = 5 # seconds - a slow GeoNames response shouldn't hang indexing
+    # GeoNames' own status vocabulary: "no result found" - a genuine,
+    # cacheable answer, distinct from an auth/rate-limit failure (10/18/19/...).
+    NO_RESULT_STATUS = 15
 
     validates :place_id, presence: true, uniqueness: true
     validates :lat, :lng, presence: true
@@ -53,9 +56,7 @@ module OpenGeographies
       # can distinguish "GeoNames had nothing here" ([]) from "couldn't ask" (nil).
       #
       # extendedFindNearbyJSON answers in one of two shapes, and which one
-      # you get isn't a corner case - checked against 15 real HRCGA church
-      # locations and every single one came back as `address`, zero as
-      # `geonames`. The `geonames` array (parse_geonames_shape) is what
+      # you get isn't a corner case. The `geonames` array (parse_geonames_shape) is what
       # shows up for less-precise points; `address` (parse_address_shape)
       # is GeoNames' integrated US Census street-level reverse-geocoder,
       # which kicks in whenever a point resolves close enough to a mapped
@@ -72,10 +73,12 @@ module OpenGeographies
         return unless response.is_a?(Net::HTTPSuccess)
 
         data = JSON.parse(response.body)
-        # GeoNames error responses (bad username, rate limit, ...) come back
-        # as 200 OK with a `status` key instead of either real shape - guard
-        # against silently caching an empty hierarchy for what's actually a failure.
-        return if data['status']
+        if data['status']
+          return [] if data.dig('status', 'value') == NO_RESULT_STATUS
+
+          Rails.logger.warn("[OpenGeographies] GeoNames lookup for #{lat},#{lng} returned status #{data.dig("status", "value").inspect}: #{data.dig("status", "message")}")
+          return
+        end
 
         if data['geonames']
           parse_geonames_shape(data['geonames'])

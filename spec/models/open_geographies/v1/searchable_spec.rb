@@ -89,13 +89,52 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(fields[:description]).to(eq('A historic church.'))
     end
 
+    # A "Slug" UDF's raw value
+    # always parameterizes to the same :slug key #base_search_data's own
+    # `slug:` envelope field already occupies, and assign_unique! suffixes
+    # on ANY collision - so writing it unconditionally produced a spurious
+    # slug_2 on every record with a non-blank Slug UDF (396 of 444 real
+    # churches), carrying no information the canonical slug/slugs fields
+    # didn't already have. Must be checked against the whole #slugs
+    # family, not just equality with the single canonical #slug - a
+    # record whose own slug carries a disambiguation suffix (see
+    # V1::Place#slug, "friendship-baptist" church records) never equals
+    # its raw Slug UDF value again, but that value is still present
+    # un-suffixed in #slugs, and still deserves the same skip.
+    it 'skips a "Slug" UDF whose value equals the canonical slug - no spurious slug_2' do
+      udf = create(:user_defined_field, defineable: place_model, column_name: 'Slug', data_type: 'String')
+      place.update!(user_defined: { udf.uuid => 'evergreen-church' })
+
+      fields = v1_place.user_defined_fields
+      expect(fields).not_to(have_key(:slug_2))
+      expect(fields).not_to(have_key(:slug))
+    end
+
+    it 'also skips a "Slug" UDF whose value is only the un-suffixed alternate in #slugs, not the (now-suffixed) canonical #slug' do
+      county_model = create(:place_model, project:)
+      county = create(:place, project_model: county_model, name: 'Putnam County')
+      rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false, allow_inverse: true, inverse_name: 'Contains')
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: county)
+
+      udf = create(:user_defined_field, defineable: place_model, column_name: 'Slug', data_type: 'String')
+      place.update!(user_defined: { udf.uuid => 'evergreen-church' })
+
+      # Canonical slug now carries the disambiguation suffix - no longer
+      # equal to the raw UDF value, but still present (un-suffixed) in #slugs.
+      expect(v1_place.slug).to(eq('evergreen-church-putnam-county'))
+      expect(v1_place.slugs).to(include('evergreen-church'))
+
+      fields = v1_place.user_defined_fields
+      expect(fields).not_to(have_key(:slug_2))
+    end
+
     # Regression: canonical_template.json is what PromotedRelationships reads
     # to decide what's promoted, and es_mapping.json (address: {type: text})
     # is a completely separate file - reconciling one against a teammate's
     # updated draft without the other left `Address` mapped as bare text but
     # never promoted, so it stayed as the raw {label:, value:} object and
     # blew up on real ES insert ("Can't get text on a START_OBJECT") for any
-    # real Place with an Address UDF, e.g. real HRCGA church records.
+    # real Place with an Address UDF.
     it 'promotes a Places "Address" UDF to a bare value, matching es_mapping.json\'s address: {type: text}' do
       udf = create(:user_defined_field, defineable: place_model, column_name: 'Address', data_type: 'String')
       place.update!(user_defined: { udf.uuid => '497 Meridian Rd, Thomasville, GA 31792, United States' })
@@ -141,6 +180,40 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(v1_place.related[:steward][:visibility]).to(eq('unpublished'))
     end
 
+    # Regression: a Relationship row surviving its own related_record's
+    # deletion is real, not hypothetical - Steve's own connector patch
+    # #4 found it independently, from the importer side ("indexer skips
+    # relationship rows whose record was deleted"). Before this, #related
+    # called .find directly, which raises RecordNotFound for a dangling
+    # row - taking down this record's ENTIRE #search_data (every other
+    # relationship too, not just the stale one). .delete (not .destroy)
+    # below is deliberate: it skips any destroy-time relationship
+    # cleanup, simulating exactly the orphaned-row scenario a real
+    # deletion path can leave behind.
+    it 'skips a (singular) relationship row whose related_record was deleted, rather than raising' do
+      publisher_model = create(:place_model, project:, model_class: 'CoreDataConnector::Organization')
+      rel = create(:project_model_relationship, primary_model: place_model, related_model: publisher_model, name: 'Steward', multiple: false)
+      steward = create(:organization, project_model: publisher_model, name: 'Friends of the Church')
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: steward)
+      steward.delete
+
+      expect { v1_place.related }.not_to(raise_error)
+      expect(v1_place.related).not_to(have_key(:steward))
+    end
+
+    it 'skips an orphaned row within a multiple relationship, keeping the rest' do
+      works_model = create(:place_model, project:, model_class: 'CoreDataConnector::Work')
+      rel = create(:project_model_relationship, primary_model: place_model, related_model: works_model, name: 'Works', multiple: true)
+      keeper = create(:work, project_model: works_model, name: 'Still Here')
+      orphan = create(:work, project_model: works_model, name: 'Deleted')
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: keeper)
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: orphan)
+      orphan.delete
+
+      expect { v1_place.related }.not_to(raise_error)
+      expect(v1_place.related[:works].map { |w| w[:name] }).to(eq(['Still Here']))
+    end
+
     # Regression: this used to be the one case the old code got wrong - a
     # non-canonically-named taxonomy relationship (nothing in
     # PromotedRelationships covers "Denomination") always got the full
@@ -150,10 +223,7 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
     # same key and overwrite the raw write - see assign_promoted!), but for
     # a relationship with no promoted_key at all, nothing ever overwrote it.
     # A depth-limited summary of a Taxonomy term at depth > 0 expands the
-    # term's own related_to - every *other* record sharing that term - so in
-    # production, a single HRCGA church's `denomination` field carried all
-    # 148 other churches of the same denomination, each with a full
-    # description, ballooning that one Place document.
+    # term's own related_to - every *other* record sharing that term.
     it 'indexes a non-promoted relationship pointing at a Taxonomy as a bare name, with a _facet companion key' do
       denomination_model = create(:taxonomy_model, project:)
       rel = create(:project_model_relationship, primary_model: place_model, related_model: denomination_model, name: 'Denomination', multiple: false)
@@ -190,10 +260,7 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
     # Regression: summarize() - used for every nested record (works[],
     # media[], contained_in_place, ...) - never called user_defined_fields
     # at all until now, at any depth. A nested Work's own "Link" UDF
-    # promotes to `url` correctly at the top level (verified against real
-    # HRCGA data), but every nested summary silently dropped it, raw or
-    # promoted, forever - caught while wiring up the WordPress template,
-    # which needs works[].url for its sidebar links.
+    # promotes to `url` correctly at the top level.
     it 'includes a nested record\'s own UDFs (raw and promoted), not just its relationships' do
       works_model = create(:place_model, project:, model_class: 'CoreDataConnector::Work')
       rel = create(:project_model_relationship, primary_model: place_model, related_model: works_model, name: 'Works', multiple: true)
@@ -352,6 +419,20 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       create(:relationship, project_model_relationship: rel, primary_record: county, related_record: place)
 
       expect(v1_place.related_to[:contains]).to(include(name: 'Grady County'))
+    end
+
+    # Same orphan-tolerance regression as #related above, inverse
+    # direction - #related_to called .find on relation.primary_record_id
+    # directly, same RecordNotFound exposure for a dangling row.
+    it 'skips a relationship row whose primary_record was deleted, rather than raising' do
+      county_model = create(:place_model, project:)
+      county = create(:place, project_model: county_model, name: 'Grady County')
+      rel = create(:project_model_relationship, primary_model: county_model, related_model: place_model, name: 'Places', multiple: true, allow_inverse: true, inverse_name: 'Contains')
+      create(:relationship, project_model_relationship: rel, primary_record: county, related_record: place)
+      county.delete
+
+      expect { v1_place.related_to }.not_to(raise_error)
+      expect(v1_place.related_to).not_to(have_key(:contains))
     end
   end
 

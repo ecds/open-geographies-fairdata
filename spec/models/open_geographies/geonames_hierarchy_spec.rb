@@ -44,9 +44,7 @@ RSpec.describe(OpenGeographies::GeonamesHierarchy) do
       ]))
     end
 
-    # Not an edge case - checked against 15 real HRCGA church locations and
-    # every single one came back this way, zero as the `geonames` array
-    # shape above. GeoNames switches to its US Census street-level
+    # GeoNames switches to its US Census street-level
     # reverse-geocoder whenever a point resolves close enough to a mapped
     # address, which real building geometry does essentially every time.
     it 'parses the address shape (US Census street-level reverse-geocoding) when that answers instead' do
@@ -87,6 +85,21 @@ RSpec.describe(OpenGeographies::GeonamesHierarchy) do
 
     it 'returns nil on a GeoNames error payload (200 OK with a status key, e.g. bad username)' do
       stub_geonames(body: { 'status' => { 'message' => 'invalid username', 'value' => 10 } }.to_json)
+      expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(be_nil)
+    end
+
+    # Regression: status 15 ("no result found") used to be lumped in with
+    # every other status code and treated as a failure (nil, never
+    # cached). A real "nothing here" answer must
+    # come back as [], the same shape an empty geonames/address payload
+    # already produces, so #lookup caches it like any other result.
+    it 'returns [] (not nil) on a "no result found" status, so #lookup can cache it' do
+      stub_geonames(body: { 'status' => { 'message' => 'no result found', 'value' => 15 } }.to_json)
+      expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(eq([]))
+    end
+
+    it 'still treats every other status code as a real failure (rate limit, auth, ...)' do
+      stub_geonames(body: { 'status' => { 'message' => 'the hourly limit of 1000 credits has been exceeded', 'value' => 19 } }.to_json)
       expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(be_nil)
     end
 

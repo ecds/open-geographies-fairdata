@@ -27,9 +27,9 @@ require 'rspec/rails'
 # directory. Alternatively, in the individual `*_spec.rb` files, manually
 # require only the support files necessary.
 #
-# Not Rails.root.glob('spec/support/**/*.rb') (what this line was before) -
-# Rails.root here is spec/dummy (the dummy app this file boots), not this
-# engine's own spec/ directory, so that glob silently matched nothing.
+# This uses __dir__ and not Rails.root.glob('spec/support/**/*.rb'), because
+# Rails.root is spec/dummy (the app this file boots), not the engine's own spec/
+# directory, so that glob would match nothing.
 Dir[File.join(__dir__, 'support', '**', '*.rb')].sort.each { |f| require f }
 
 # Ensures that the test database schema matches the current schema file.
@@ -61,10 +61,9 @@ RSpec.configure do |config|
   config.after(:suite) do
     DatabaseCleaner.clean_with(:truncation)
 
-    # v1's index names, not a class reference (OpenGeographies::Place.searchkick_index.name,
-    # the old v0 stand-in this used to read) - checked with exists? first since
-    # most spec runs never actually reindex anything and would otherwise error
-    # trying to delete an index that was never created.
+    # Deletes the v1 indexes by name. Each is checked with exists? first, since
+    # most spec runs never reindex anything and deleting an index that was
+    # never created would raise.
     ['open_geographies_v1', 'open_geographies_v1_map_layers'].each do |index_name|
       index = Searchkick::Index.new(index_name)
       index.delete if index.exists?

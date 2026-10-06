@@ -35,10 +35,10 @@ RSpec.describe('OpenGeographies::V1::Places', type: :request) do
 
     churches = create_list(:place, 3, project_model: place_model, name: 'Evergreen Baptist Church')
     schools = create_list(:place, 2, project_model: place_model, name: 'Evergreen Elementary School')
-    # Distinctly named (unlike the three identically-named churches above,
-    # whose shared slug would make a #show lookup ambiguous) and deliberately
-    # left out of the Contained In/Types relationships below, so it doesn't
-    # perturb the facet-count/pagination totals asserted elsewhere in this spec.
+    # Distinctly named, unlike the identically-named places above, so its slug
+    # identifies it uniquely for #show. It is left out of the Contained In and
+    # Types relationships below so it does not change the facet counts and
+    # pagination totals asserted elsewhere in this spec.
     abba = create(:place, project_model: place_model, name: 'Abba Baptist')
 
     (churches + schools).each do |place|
@@ -83,14 +83,9 @@ RSpec.describe('OpenGeographies::V1::Places', type: :request) do
     expect(response_json[:results].size).to(eq(2))
     expect(response_json[:meta]).to(eq({ page: 2, per_page: 2, total_count: 6, total_pages: 3 }))
 
-    # --- #show, by slug - regression check for the `slugs` mapping bug found
-    # live in production: `slugs` (plural, the array PlacesController#show
-    # actually filters on) had no explicit mapping and fell through to the
-    # strings_as_text dynamic template as analyzed text, so this exact
-    # where: { slugs: ... } term filter silently matched nothing even though
-    # the record existed with the right value - see es_mapping.json's
-    # slugs_comment. `slug` (singular) was always mapped correctly, which is
-    # why this only ever showed up on the field #show actually queries. ---
+    # #show looks a place up by slug. `slugs` (the array #show filters on) must be
+    # mapped as a keyword in es_mapping.json, otherwise it is indexed as analyzed
+    # text and an exact where: { slugs: ... } filter matches nothing.
     get "/open_geographies/v1/#{project_slug}/places/#{abba.name.parameterize}"
     expect(response).to(have_http_status(:ok))
     expect(response_json[:name]).to(eq('Abba Baptist'))

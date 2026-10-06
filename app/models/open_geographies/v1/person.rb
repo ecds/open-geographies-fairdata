@@ -9,12 +9,8 @@ module OpenGeographies
 
       self.table_name = 'core_data_connector_people'
 
-      # v0's Person#search_data fully overrides the concern's version (just
-      # `{first_name:, last_name:}` - no uuid, no slug, no relationships at
-      # all), which looks like an oversight rather than a deliberate
-      # choice. Not carried forward here: this keeps the standard envelope
-      # and just adds the two fields Nameable's `name` delegate doesn't
-      # otherwise expose.
+      # Adds first_name and last_name to the standard document, since
+      # Nameable's `name` delegate does not expose them separately.
       def extras
         { first_name:, last_name: }
       end

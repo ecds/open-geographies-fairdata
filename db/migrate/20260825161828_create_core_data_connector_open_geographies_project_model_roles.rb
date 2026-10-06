@@ -32,9 +32,10 @@ class CreateCoreDataConnectorOpenGeographiesProjectModelRoles < ActiveRecord::Mi
       where: "role = 'primary_place'",
       name: 'index_og_project_model_roles_on_unique_primary_place'
 
-    # "map_layer" is intentionally not made unique; an atlas can tag more than
-    # one Place-class project_model as a map layer source (GCA's separate Map
-    # Layers + Topo Quads, both folding into the same model_type at index time).
+    # "map_layer" is intentionally not unique per project: an atlas can tag
+    # more than one Place-class project_model as a map layer source (for
+    # example separate map and topo quad models), and all of them are indexed
+    # under the same model_type.
     add_index :core_data_connector_open_geographies_project_model_roles,
       [:project_model_id, :role], unique: true,
       name: 'index_og_project_model_roles_on_project_model_id_and_role'

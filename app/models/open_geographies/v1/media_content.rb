@@ -9,16 +9,12 @@ module OpenGeographies
 
       self.table_name = 'core_data_connector_media_contents'
 
-      # The IIIF Image API (content_iiif_url/content_preview_url/
-      # content_thumbnail_url - tiling, thumbnails, info.json) only applies
-      # to actual images. For anything else (audio, video, PDF, ...) those
-      # endpoints 404 by design - there's no image to derive a tile or
-      # thumbnail from. Confirmed live against a real audio record: /iiif,
-      # /preview, /thumbnail, /info all 404, while /content, /download,
-      # /inline, and /manifest (the Presentation API, which describes it
-      # correctly as a Sound annotation) all work fine. So content_url
-      # needs to be content-type aware, not a blind IIIF Image API request
-      # for every record regardless of what it actually is.
+      # The IIIF Image API URLs (content_iiif_url, content_preview_url,
+      # content_thumbnail_url: tiles, thumbnails, info.json) only apply to
+      # images. For other content (audio, video, PDF, ...) those endpoints
+      # return 404 because there is no image to derive tiles or a thumbnail
+      # from, while /content, /download, /inline and /manifest still work. So
+      # content_url depends on the content type.
       def extras
         if image?
           {

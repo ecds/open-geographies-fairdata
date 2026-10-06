@@ -34,13 +34,10 @@ module OpenGeographies
         clause
       end
 
-      # ?bbox=minLon,minLat,maxLon,maxLat - the common bbox query-param
-      # convention (matches e.g. Leaflet's getBounds().toBBoxString()).
-      # NOTE: the Searchkick geo_shape `where` syntax here is written from
-      # the Searchkick docs, not verified against a live query yet - no
-      # open_geographies_v1_map_layers index has been created/reindexed
-      # against real data. Confirm this shape once there's a Map Layers
-      # project_model to test against.
+      # Parses ?bbox=minLon,minLat,maxLon,maxLat, the common bounding box
+      # parameter format (the same string Leaflet's
+      # getBounds().toBBoxString() produces), into the upper-left and
+      # lower-right corners of an Elasticsearch envelope.
       def bbox_coordinates
         min_lon, min_lat, max_lon, max_lat = params[:bbox].split(',').map(&:to_f)
         [[min_lon, max_lat], [max_lon, min_lat]]

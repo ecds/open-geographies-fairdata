@@ -2,12 +2,10 @@
 
 require 'rails_helper'
 
-# Real Elasticsearch, not a mock - same rationale as places_spec.rb/
-# place_indexing_spec.rb: the whole point of this endpoint is stops[]'s
-# shape and order, which is exactly the class of thing a pure-Ruby test on
-# #related can't fully prove once it's gone through indexing/es_mapping.json
-# too - the stops mapping itself was wrong (position/location, which the
-# engine never actually wrote) until this same change fixed it.
+# Uses a real Elasticsearch index and not a mock, as in places_spec.rb and
+# place_indexing_spec.rb. The point of this endpoint is the shape and order of
+# stops[], which a Ruby-only test of #related cannot fully check once the
+# document has been through indexing and es_mapping.json.
 RSpec.describe('OpenGeographies::V1::Tours', type: :request) do
   after do
     index = OpenGeographies::V1::Place.searchkick_index

@@ -44,9 +44,9 @@ RSpec.describe(OpenGeographies::GeonamesHierarchy) do
       ]))
     end
 
-    # GeoNames switches to its US Census street-level
-    # reverse-geocoder whenever a point resolves close enough to a mapped
-    # address, which real building geometry does essentially every time.
+    # GeoNames answers from its US Census street-level reverse geocoder when a
+    # point resolves close enough to a mapped address, which is the case for
+    # most building locations.
     it 'parses the address shape (US Census street-level reverse-geocoding) when that answers instead' do
       stub_geonames(body: {
         'address' => {
@@ -88,11 +88,8 @@ RSpec.describe(OpenGeographies::GeonamesHierarchy) do
       expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(be_nil)
     end
 
-    # Regression: status 15 ("no result found") used to be lumped in with
-    # every other status code and treated as a failure (nil, never
-    # cached). A real "nothing here" answer must
-    # come back as [], the same shape an empty geonames/address payload
-    # already produces, so #lookup caches it like any other result.
+    # Status 15 ("no result found") is a valid answer, not a failure. It returns
+    # [], the same as an empty geonames or address payload, so #lookup caches it.
     it 'returns [] (not nil) on a "no result found" status, so #lookup can cache it' do
       stub_geonames(body: { 'status' => { 'message' => 'no result found', 'value' => 15 } }.to_json)
       expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(eq([]))

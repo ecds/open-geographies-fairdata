@@ -4,22 +4,19 @@ module OpenGeographies
   module V1
     class PlacesController < ApplicationController
       # Only fields already mapped as exact-match `keyword` (or a keyword
-      # sub-property) are here - a raw, non-promoted UDF/relationship is
-      # indexed as an object or analyzed text (see Searchable#user_defined_fields
-      # /#related), so a terms aggregation on one wouldn't give clean facet
-      # buckets without a mapping change (a `.keyword` multi-field) this
-      # doesn't make. Bespoke per-atlas fields stay searchable via `q`,
-      # just not facetable, until that's worth doing.
+      # sub-property) are facetable. A raw, non-promoted user-defined field or
+      # relationship is indexed as an object or analyzed text (see
+      # Searchable#user_defined_fields and #related), so a terms aggregation on it
+      # would not give clean buckets without a `.keyword` multi-field in the
+      # mapping. Those fields are still searchable through `q`.
       FACETABLE_FIELDS = ['types', 'contained_in_place.name', 'administrative_area.name'].freeze
 
-      # Searchkick's own default (unset `fields:`) targets `_all`, which
-      # doesn't exist in this custom mapping (no field named `_all` is
-      # defined, and ES 7+ dropped the built-in composite field of that
-      # name anyway) - a `q` search would silently match nothing without
-      # this. Every place-level (not nested related-record) field mapped
-      # with the `og_text` analyzer - see es_mapping.json - so a search
-      # matches what a curator actually typed onto the place itself,
-      # not incidentally through some unrelated linked record's caption.
+      # Searchkick searches `_all` by default, which does not exist in this
+      # mapping (Elasticsearch 7+ removed that composite field), so a `q` search
+      # would match nothing without an explicit list. These are the place-level
+      # (not nested related-record) fields mapped with the og_text analyzer in
+      # es_mapping.json, so a search matches text entered on the place itself and
+      # not text from a linked record such as a caption.
       SEARCH_FIELDS = ['name', 'names', 'description', 'short_description', 'address'].freeze
 
       DEFAULT_PER_PAGE = 25
@@ -66,21 +63,19 @@ module OpenGeographies
         params[:q].presence || '*'
       end
 
-      # { model_type:, project_id:, <facet field>: [selected values], ... } -
-      # facet filters are AND'd together across different fields, OR'd within
-      # one field's own selected values (Searchkick's normal `where: {field:
-      # [a, b]}` semantics) - "Church or School" within Types, narrowed by
-      # whatever's selected for Contained In, and so on.
+      # { model_type:, project_id:, <facet field>: [selected values], ... }
+      # Facet filters are combined with AND across different fields and OR
+      # across the selected values of one field (Searchkick's usual
+      # `where: {field: [a, b]}` behavior), so "Park or Cemetery" within Types
+      # is narrowed further by whatever is selected for Contained In.
       def where_clause
         clause = { model_type: 'place', project_id: project_id }
         facet_filters.each { |field, values| clause[field.to_sym] = values }
         clause
       end
 
-      # Only ever reads the FACETABLE_FIELDS keys out of params[:facets] -
-      # an unrecognized field name is silently ignored rather than raising,
-      # same "don't break the whole request over one bad param" posture as
-      # the rest of this API.
+      # Only the FACETABLE_FIELDS keys are read from params[:facets]. An
+      # unrecognized field name is ignored and does not fail the request.
       def facet_filters
         raw = params[:facets]
         return {} if raw.blank?

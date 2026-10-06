@@ -2,27 +2,22 @@
 
 # lib/tasks/og_pmtiles.rake
 #
-# Generalized (any v1 atlas, not just Georgia Coast Atlas) PMTiles pipeline,
-# replacing core-data-cloud's old ecds_pmtiles.rake's GCA-specific one:
-# geometry + properties come from OpenGeographies::V1::Place.each_geojson_feature,
-# so every atlas gets the same OG-schema-shaped properties (uuid/slug/name/
-# model_type/project/types) for free, instead of a hand-maintained per-atlas
-# property mapping. One flat vector-tile layer, not one layer per taxonomy
-# type - `types` is just a property now, so a MapLibre client filters/styles
-# by it (e.g. `["in", "Church", ["get", "types"]]`) instead of toggling
-# separate tippecanoe layers.
+# Builds a PMTiles file for any v1 atlas and optionally publishes it. Geometry
+# and properties come from OpenGeographies::V1::Place.each_geojson_feature, so
+# every atlas gets the same schema-shaped properties (uuid, slug, name,
+# model_type, project, types) with no per-atlas property mapping. The output
+# is one flat vector-tile layer; `types` is a property, so a MapLibre client
+# filters and styles by it (e.g. `["in", "Park", ["get", "types"]]`) and does
+# not need a separate layer per type.
 #
-# Lives in the engine, not the host app - this task has never needed
-# anything core-data-cloud-specific (Tippecanoe::Builder is a standalone
-# CLI wrapper with no Rails/CoreDataConnector coupling at all), so keeping
-# it here means any FairData-backed host that mounts this engine gets PMTiles
-# export for free too, rather than needing to copy the whole task over by
-# hand. S3 bucket / CloudFront distribution stay runtime options with
-# sensible defaults, not hardcoded to one deployment.
+# The task lives in the engine because nothing in it depends on a particular
+# host app: Tippecanoe::Builder is a standalone CLI wrapper, so any FairData
+# host that mounts this engine gets the export. The S3 bucket and CloudFront
+# distribution are runtime options with defaults, not hardcoded.
 #
-# Designed to run unattended (cron/whenever, a scheduled CI job, ...): every
-# option has a default, nothing is interactive, and a failure raises/exits
-# non-zero rather than silently producing a partial file.
+# It is meant to run unattended (cron, a scheduled CI job): every option has a
+# default, nothing is interactive, and a failure raises and exits non-zero
+# instead of producing a partial file.
 
 require 'fileutils'
 require 'json'
@@ -32,7 +27,7 @@ require 'aws-sdk-s3'
 require 'aws-sdk-cloudfront'
 
 namespace :og_pmtiles do
-  desc "Build and publish a PMTiles file for a v1 atlas's places (generalized OG engine export, not GCA-specific)"
+  desc "Build and publish a PMTiles file for a v1 atlas's places"
   task create: :environment do
     options = {
       project: ENV['PROJECT'] || 'Georgia Coast Atlas',
@@ -77,10 +72,10 @@ namespace :og_pmtiles do
 
     puts "Exporting #{place_model.name.inspect} places from #{project.name.inspect} (project_model_id=#{place_model.id})..."
 
-    # Written to two separate files, not one - see the tippecanoe build
-    # step below for why. `contained_in` (see V1::Place.each_geojson_feature)
-    # is exactly the same distinction a MapLibre client already uses to
-    # tell a walked-in admin area apart from a place from --place-model.
+    # Features are written to two files, one for the project model's own places
+    # and one for the admin areas reached through Contained In, because they
+    # are built separately below. `contained_in` (see
+    # V1::Place.each_geojson_feature) marks the admin areas.
     place_count = 0
     admin_count = 0
     File.open(places_geojson_path, 'w') do |places_file|
@@ -113,28 +108,21 @@ namespace :og_pmtiles do
     puts "#{place_count} place features, #{admin_count} admin-area features written."
     puts 'Building PMTiles with tippecanoe (places clustered, admin areas kept individually)...'
 
-    # Two separate tippecanoe invocations, merged with tile-join, not one
-    # build with a single set of flags - --cluster-distance (and
-    # --drop-densest-as-needed before it) is a whole-invocation setting
-    # with no per-feature opt-out. Verified empirically: a feature pinned
-    # to tippecanoe.minzoom:0 (see V1::Place#emit_admin_area_feature) still
-    # gets merged into a cluster blob if it's fed into a build that has
-    # --cluster-distance on at all, and routing it to its own
-    # tippecanoe.layer only stops it from clustering *with* places - within
-    # its own layer, all of it still clustered into one blob, losing every
-    # individual name/admin_level. Places (potentially thousands, e.g.
-    # Georgia Coast) should cluster; admin areas (a small, bounded set -
-    # 29 for Georgia) must always render individually and by name, never
-    # merged into a "N counties" bubble. tile-join combines the two
-    # .mbtiles back into one final "places" layer, matching what every
-    # existing client (the WP shortcode) already expects as a single
-    # source-layer - a client tells a cluster apart from a real place via
-    # tippecanoe's own `clustered`/`point_count` properties, the same way
-    # it already tells an admin area apart via `contained_in`.
-    # Reads a built .mbtiles' own maxzoom straight from its SQLite metadata
-    # table (the mbtiles spec guarantees this key) - the ground truth for
-    # what zoom range a tileset's tiles actually exist at, not the flags
-    # that were passed to build it.
+    # Two tippecanoe invocations are merged with tile-join, and not built in
+    # one run, because --cluster-distance (like --drop-densest-as-needed) applies
+    # to the whole invocation and cannot be turned off for individual features.
+    # A feature with `tippecanoe.minzoom: 0` is still merged into a cluster
+    # when it is part of a build that clusters, and a separate
+    # `tippecanoe.layer` only stops it clustering with places, not with the
+    # other admin areas. Places (potentially thousands) should cluster; admin
+    # areas (a small set) must render individually and keep their names.
+    # tile-join combines the two tilesets into one "places" layer. A client
+    # tells a cluster from a place by tippecanoe's `clustered` / `point_count`
+    # properties, and an admin area by `contained_in`.
+    #
+    # Reads a built .mbtiles file's maxzoom from its SQLite metadata table,
+    # which is the zoom range the tiles actually cover and not just what the
+    # build flags requested.
     read_mbtiles_maxzoom = lambda do |path|
       out, _err, status = Open3.capture3('sqlite3', path.to_s, "SELECT value FROM metadata WHERE name = 'maxzoom';")
       status.success? && !out.strip.empty? ? Integer(out.strip) : nil
@@ -143,61 +131,34 @@ namespace :og_pmtiles do
     builder = Tippecanoe::Builder.new({ layer: 'places' })
     mbtiles_to_merge = []
 
-    # Tippecanoe::ExecutionError carries the failed command's own real
-    # stdout/stderr (Tippecanoe::Builder#run_command captures both), but
-    # by default nothing ever prints them - Rake's own "task aborted!"
-    # handler only shows the exception's #message, e.g. "tippecanoe
-    # failed (exit 104)", with no indication of WHY. Found live: that
-    # alone gave no way to diagnose a real failure - every one of these
-    # four tippecanoe/pmtiles invocations succeeded when reproduced
-    # directly, immediately after, with the exact same input files and
-    # flags, so whatever actually went wrong only exists in the output
-    # this rescue makes sure is no longer thrown away.
+    # Tippecanoe::ExecutionError carries the failed command's stdout and
+    # stderr. Rake only prints the exception message (e.g. "tippecanoe failed
+    # (exit 104)"), so the rescue below prints the output to show why it failed.
     begin
       if place_count.positive?
-        # --cluster-maxzoom=g: without it, tippecanoe keeps clustering active
-        # all the way up through the tileset's own maxzoom, so two points
-        # closer together than --cluster-distance at THAT zoom stay merged
-        # forever - there's no deeper tile data for a viewer to zoom into
-        # that would ever separate them. The
-        # "g" magic value (matching -zg's own) sets the cluster cutoff to
-        # maxzoom - 1 automatically, so every point is guaranteed to render
-        # individually by the tileset's own max zoom, regardless of how
-        # close two real places are - no manual per-atlas tuning needed.
+        # --cluster-maxzoom=g: without it, clustering stays active through the
+        # tileset's maxzoom, so two points closer together than
+        # --cluster-distance at that zoom stay merged and there is no deeper
+        # zoom at which they separate. "g" sets the cluster cutoff to
+        # maxzoom - 1, so every point renders individually at the maximum zoom.
         place_extra_args = ['-zg', '-r1', "--cluster-distance=#{options[:cluster_distance]}", '--cluster-maxzoom=g']
-        # Tippecanoe::Builder#build_mbtiles (called directly here for
-        # per-build flag control) does NOT delete a pre-existing output
-        # file first - only the higher-level #build wrapper does that,
-        # which this task stopped using once places/admin needed two
-        # separate invocations. Without this, tippecanoe correctly refuses
-        # to overwrite an existing tileset ("already exists... use
-        # --force") - real failure hit live on a second run in the same
-        # tmp_dir, exit 104, previously indistinguishable from a genuine
-        # crash until the rescue below started surfacing tippecanoe's own
-        # stderr.
+        # Tippecanoe::Builder#build_mbtiles does not delete an existing output
+        # file (only #build does), and tippecanoe refuses to overwrite an
+        # existing tileset (exit 104), so a stale file from a previous run is
+        # removed first.
         File.delete(places_mbtiles_path) if File.exist?(places_mbtiles_path)
         builder.build_mbtiles(input: places_geojson_path.to_s, output: places_mbtiles_path.to_s, extra_args: place_extra_args)
         mbtiles_to_merge << places_mbtiles_path
       end
 
       if admin_count.positive?
-        # Matches the places tileset's own maxzoom explicitly (-zN), not -zg
-        # independently guessing one for this dataset - real bug found live:
-        # ~29 sparse admin-area features spread across a whole state give -zg
-        # far less reason to go deep than hundreds of tightly-clustered place
-        # points do (confirmed: -zg picked z1 for admin alone vs. z12 for
-        # places in a synthetic reproduction of this atlas's real
-        # proportions), so admin_areas.mbtiles simply had no tile data past
-        # z1 at all - not a dropped-feature problem this time, an
-        # out-of-range one. tile-join can't merge in tiles that were never
-        # generated, so every admin feature vanished the moment a viewer
-        # zoomed in past whatever shallow zoom -zg happened to pick for this
-        # much sparser layer. No drop/cluster flags either way - nothing
-        # this small should ever be thinned, and
-        # V1::Place#emit_admin_area_feature's own per-feature
-        # tippecanoe.minzoom:0 pin is already there as a second layer of
-        # protection regardless. Falls back to -zg only when there's no
-        # places tileset to keep pace with at all.
+        # The admin tileset is built with the places tileset's maxzoom (-zN)
+        # and not with -zg. A small, sparse set of features gives -zg little
+        # reason to go deep, so the admin tiles would stop at a low zoom and
+        # tile-join cannot merge in tiles that were never generated, making
+        # the admin areas disappear when zooming in. No drop or cluster flags
+        # are used, since a set this small should not be thinned. Falls back
+        # to -zg when there is no places tileset to match.
         admin_extra_args =
           if place_count.positive?
             places_maxzoom = read_mbtiles_maxzoom.call(places_mbtiles_path)
@@ -207,8 +168,7 @@ namespace :og_pmtiles do
           else
             ['-zg']
           end
-        # Same reason as the places build above - build_mbtiles doesn't
-        # clear a stale output file on its own.
+        # Removes a stale output file, as for the places build above.
         File.delete(admin_mbtiles_path) if File.exist?(admin_mbtiles_path)
         builder.build_mbtiles(input: admin_geojson_path.to_s, output: admin_mbtiles_path.to_s, extra_args: admin_extra_args)
         mbtiles_to_merge << admin_mbtiles_path
@@ -241,9 +201,8 @@ namespace :og_pmtiles do
 
     puts "Uploading to s3://#{options[:s3_bucket]}/#{options[:s3_key]}..."
     begin
-      # Aws::S3::Object#upload_file is deprecated (removed in the next major
-      # SDK version) in favor of TransferManager - same underlying client,
-      # so it still raises Aws::S3::Errors::ServiceError on failure the same way.
+      # TransferManager replaces the deprecated Aws::S3::Object#upload_file. It
+      # raises Aws::S3::Errors::ServiceError on failure in the same way.
       transfer_manager = Aws::S3::TransferManager.new(client: Aws::S3::Client.new(region: 'us-east-1'))
       transfer_manager.upload_file(pmtiles_path.to_s, bucket: options[:s3_bucket], key: options[:s3_key])
       puts 'Upload complete.'
@@ -252,15 +211,11 @@ namespace :og_pmtiles do
     end
 
     if options[:cloudfront_distribution_id]
-      # Scoped to this atlas's own key, not '/*' - the bucket (default
-      # ecds-pmtiles) holds every atlas's PMTiles file behind the same
-      # distribution, so a wildcard invalidation would evict every other
-      # atlas's already-warm cache (and cost more - CloudFront bills
-      # invalidation paths, and '/*' is billed the same as a scoped one)
-      # every time a single atlas republishes. The trailing '*' still
-      # covers whatever the Lambda actually serves under this basename
-      # (the TileJSON at "/<key>.json" and any tile sub-paths beneath it),
-      # not just the literal .pmtiles object key.
+      # The invalidation is limited to this atlas's key and not '/*', because
+      # the bucket holds every atlas's PMTiles file behind one distribution and
+      # a wildcard would clear the other atlases' cached files too. The trailing
+      # '*' also covers what is served under the same basename (the TileJSON at
+      # "/<key>.json" and tile sub-paths), not just the .pmtiles object.
       invalidation_path = "/#{options[:s3_key].sub(/\.pmtiles\z/, "")}*"
       puts "Invalidating CloudFront cache at #{invalidation_path}..."
       begin
@@ -274,9 +229,7 @@ namespace :og_pmtiles do
         )
         puts "Invalidation submitted: #{invalidation.invalidation.id}"
       rescue Aws::CloudFront::Errors::ServiceError => e
-        # Not fatal: the new file is already live on S3, just not cache-busted
-        # everywhere yet - worth surfacing, not worth failing an otherwise-
-        # successful publish over.
+        # Not fatal: the new file is already on S3 and only the cache is stale.
         puts "Warning: CloudFront invalidation failed: #{e.message}"
       end
     else

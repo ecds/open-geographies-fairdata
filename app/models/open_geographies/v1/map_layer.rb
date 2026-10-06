@@ -3,11 +3,11 @@
 module OpenGeographies
   module V1
     # A Place-class record playing the 'map_layer' role (see
-    # ProjectModelRole) - GCA's "Map Layers"/"Topo Quads", generalized.
-    # Gets its own index rather than joining open_geographies_v1: its
-    # primary query is spatial-extent search (bbox), not point/text
-    # search, and it carries a materially different document shape
-    # (date/bearing/source instead of address/contained_in_place/...).
+    # ProjectModelRole), such as a georeferenced historic map or quad sheet.
+    # It has its own index and does not join open_geographies_v1: it is
+    # searched mainly by spatial extent (bbox) and not by point or text, and
+    # its document has a different shape (date, bearing and source instead of
+    # address and contained_in_place).
     class MapLayer < ::CoreDataConnector::Place
       include Searchable
 

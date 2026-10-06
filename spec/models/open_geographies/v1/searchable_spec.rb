@@ -3,15 +3,13 @@
 require 'rails_helper'
 
 RSpec.describe(OpenGeographies::V1::Searchable) do
-  # This file tests #search_data's Ruby-hash output directly (see every
-  # example below), never real Elasticsearch - unlike places_spec.rb/
-  # place_indexing_spec.rb, which explicitly reindex and query a real
-  # index. Some scenarios here deliberately construct data that's malformed
-  # relative to es_mapping.json on purpose (e.g. the raw-key/canonical-name
-  # collision spec below, where a non-taxonomy relationship raw-keys to
-  # :types) - Reindexable's now-automatic on-save reindexing would otherwise
-  # try to actually write that into the real index and fail with a mapping
-  # conflict having nothing to do with what this file is testing.
+  # This file tests the Ruby hash returned by #search_data and never uses
+  # Elasticsearch, unlike places_spec.rb and place_indexing_spec.rb, which reindex
+  # and query a real index. Some examples build data that does not match
+  # es_mapping.json on purpose (for example the raw key / canonical name collision
+  # below, where a non-taxonomy relationship raw-keys to :types). Reindexable's
+  # automatic reindexing on save would fail on that with a mapping conflict
+  # unrelated to what is being tested.
   around do |example|
     OpenGeographies::V1::Reindexable.disable { example.run }
   end
@@ -64,10 +62,9 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       taxonomy = create(:taxonomy, project_model: taxonomy_model, name: 'Church')
       v1_taxonomy = OpenGeographies::V1::Taxonomy.find(taxonomy.id)
 
-      # Not asserting place.id == taxonomy.id (Postgres sequences make that
-      # unreliable to force) - the real regression is any two models sharing
-      # a search_document_id, so this only needs the ids to differ from each
-      # other's uuids, which they always will.
+      # The ids are not compared directly (Postgres sequences make that hard to
+      # force). Two models must not share a search_document_id, so this only checks
+      # that it is the uuid.
       expect(v1_place.search_document_id).not_to(eq(v1_taxonomy.search_document_id))
     end
   end
@@ -89,18 +86,12 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(fields[:description]).to(eq('A historic church.'))
     end
 
-    # A "Slug" UDF's raw value
-    # always parameterizes to the same :slug key #base_search_data's own
-    # `slug:` envelope field already occupies, and assign_unique! suffixes
-    # on ANY collision - so writing it unconditionally produced a spurious
-    # slug_2 on every record with a non-blank Slug UDF (396 of 444 real
-    # churches), carrying no information the canonical slug/slugs fields
-    # didn't already have. Must be checked against the whole #slugs
-    # family, not just equality with the single canonical #slug - a
-    # record whose own slug carries a disambiguation suffix (see
-    # V1::Place#slug, "friendship-baptist" church records) never equals
-    # its raw Slug UDF value again, but that value is still present
-    # un-suffixed in #slugs, and still deserves the same skip.
+    # A "Slug" UDF's value parameterizes to the same :slug key as the `slug:`
+    # field in #base_search_data, and assign_unique! suffixes on any collision, so
+    # writing it would add a redundant slug_2. It is skipped when its value is
+    # anywhere in #slugs and not only when it equals the canonical #slug, because a
+    # disambiguation suffix (see V1::Place#slug) makes the canonical slug differ
+    # from the raw value, which is still in #slugs unsuffixed.
     it 'skips a "Slug" UDF whose value equals the canonical slug - no spurious slug_2' do
       udf = create(:user_defined_field, defineable: place_model, column_name: 'Slug', data_type: 'String')
       place.update!(user_defined: { udf.uuid => 'evergreen-church' })
@@ -119,8 +110,8 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       udf = create(:user_defined_field, defineable: place_model, column_name: 'Slug', data_type: 'String')
       place.update!(user_defined: { udf.uuid => 'evergreen-church' })
 
-      # Canonical slug now carries the disambiguation suffix - no longer
-      # equal to the raw UDF value, but still present (un-suffixed) in #slugs.
+      # The canonical slug carries the disambiguation suffix, so it no longer
+      # equals the raw UDF value, which is still present (unsuffixed) in #slugs.
       expect(v1_place.slug).to(eq('evergreen-church-putnam-county'))
       expect(v1_place.slugs).to(include('evergreen-church'))
 
@@ -128,13 +119,10 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(fields).not_to(have_key(:slug_2))
     end
 
-    # Regression: canonical_template.json is what PromotedRelationships reads
-    # to decide what's promoted, and es_mapping.json (address: {type: text})
-    # is a completely separate file - reconciling one against a teammate's
-    # updated draft without the other left `Address` mapped as bare text but
-    # never promoted, so it stayed as the raw {label:, value:} object and
-    # blew up on real ES insert ("Can't get text on a START_OBJECT") for any
-    # real Place with an Address UDF.
+    # canonical_template.json decides what PromotedRelationships promotes, and
+    # es_mapping.json (address: {type: text}) is a separate file. If `Address` is
+    # mapped as text but not promoted, it stays a raw {label:, value:} object and
+    # Elasticsearch rejects it ("Can't get text on a START_OBJECT").
     it 'promotes a Places "Address" UDF to a bare value, matching es_mapping.json\'s address: {type: text}' do
       udf = create(:user_defined_field, defineable: place_model, column_name: 'Address', data_type: 'String')
       place.update!(user_defined: { udf.uuid => '497 Meridian Rd, Thomasville, GA 31792, United States' })
@@ -180,16 +168,10 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(v1_place.related[:steward][:visibility]).to(eq('unpublished'))
     end
 
-    # Regression: a Relationship row surviving its own related_record's
-    # deletion is real, not hypothetical - Steve's own connector patch
-    # #4 found it independently, from the importer side ("indexer skips
-    # relationship rows whose record was deleted"). Before this, #related
-    # called .find directly, which raises RecordNotFound for a dangling
-    # row - taking down this record's ENTIRE #search_data (every other
-    # relationship too, not just the stale one). .delete (not .destroy)
-    # below is deliberate: it skips any destroy-time relationship
-    # cleanup, simulating exactly the orphaned-row scenario a real
-    # deletion path can leave behind.
+    # A relationship row whose related record has been deleted is skipped, and
+    # does not raise RecordNotFound and fail the whole #search_data. `.delete` and
+    # not `.destroy` is used below to skip destroy-time cleanup and leave an
+    # orphaned row.
     it 'skips a (singular) relationship row whose related_record was deleted, rather than raising' do
       publisher_model = create(:place_model, project:, model_class: 'CoreDataConnector::Organization')
       rel = create(:project_model_relationship, primary_model: place_model, related_model: publisher_model, name: 'Steward', multiple: false)
@@ -214,16 +196,10 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(v1_place.related[:works].map { |w| w[:name] }).to(eq(['Still Here']))
     end
 
-    # Regression: this used to be the one case the old code got wrong - a
-    # non-canonically-named taxonomy relationship (nothing in
-    # PromotedRelationships covers "Denomination") always got the full
-    # depth-limited summary shape, since the bare-name shortcut only ever
-    # ran inside the *promoted* write path. That's fine for `types` (it only
-    # ever looked bare because its promoted write happens to land on the
-    # same key and overwrite the raw write - see assign_promoted!), but for
-    # a relationship with no promoted_key at all, nothing ever overwrote it.
-    # A depth-limited summary of a Taxonomy term at depth > 0 expands the
-    # term's own related_to - every *other* record sharing that term.
+    # A taxonomy relationship that is not promoted (nothing in PromotedRelationships
+    # covers "Denomination") is written as bare names and not as a depth-limited
+    # summary. A summary of a taxonomy term at depth > 0 expands the term's own
+    # related_to, which includes every other record that shares the term.
     it 'indexes a non-promoted relationship pointing at a Taxonomy as a bare name, with a _facet companion key' do
       denomination_model = create(:taxonomy_model, project:)
       rel = create(:project_model_relationship, primary_model: place_model, related_model: denomination_model, name: 'Denomination', multiple: false)
@@ -257,10 +233,8 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(data[:contained_in_place]).to(include(name: 'Grady County'))
     end
 
-    # Regression: summarize() - used for every nested record (works[],
-    # media[], contained_in_place, ...) - never called user_defined_fields
-    # at all until now, at any depth. A nested Work's own "Link" UDF
-    # promotes to `url` correctly at the top level.
+    # #summarize includes a nested record's own user-defined fields at any depth.
+    # A nested Work's "Link" field promotes to `url`, as it does at the top level.
     it 'includes a nested record\'s own UDFs (raw and promoted), not just its relationships' do
       works_model = create(:place_model, project:, model_class: 'CoreDataConnector::Work')
       rel = create(:project_model_relationship, primary_model: place_model, related_model: works_model, name: 'Works', multiple: true)
@@ -294,16 +268,9 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(media_summary[:publisher]).not_to(have_key(:media)) # but no further recursion from there
     end
 
-    # Regression: this engine dropped a multiple relationship's own curator-
-    # set order entirely - v0's equivalent (Searchable#related, unversioned)
-    # already threads Relationship#order through via related_search_data,
-    # but v1's rewrite lost it. Doesn't show up as broken data so much as
-    # missing data: Tours exists specifically to be an *ordered* list of
-    # stops ("Ordered stops via the relationship's order" - Tours' own
-    # canonical_template.json doc-comment), so an unordered `stops[]` quietly
-    # defeats the one thing that makes it a Tour rather than a plain set.
-    # Exercised here on Media (any multiple relationship, not just Stops) to
-    # show it's the generic engine's fix, not a Tour-specific special case.
+    # A multiple relationship's curator-set `order` is included in each item's
+    # summary. Tours depend on it ("Ordered stops via the relationship's order"), and
+    # it applies to any multiple relationship, so it is tested here on Media.
     it 'threads each multiple relationship item\'s own Relationship#order into its summary, and returns items pre-sorted by it' do
       media_model = create(:place_model, project:, model_class: 'CoreDataConnector::MediaContent')
       rel = create(:project_model_relationship, primary_model: place_model, related_model: media_model, name: 'Media', multiple: true)
@@ -319,13 +286,10 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(media.map { |item| item[:order] }).to(eq([1, 2]))
     end
 
-    # "Optional" means a client shouldn't expect the key to exist at all for
-    # a relationship nobody ever curator-ordered (the overwhelming common
-    # case today - order wasn't a first-class concept before this), not
-    # that it exists and might be `null`. Also covers the mixed case:
-    # Postgres' NULLS LAST default (the `.order(:order)` query in #related)
-    # means an unordered item still lands after every ordered one, so the
-    # array stays meaningfully sorted even when only some items have order.
+    # `order` is optional. A relationship that was never ordered has no `order`
+    # key at all, and not `order: null`. In a mix of ordered and unordered items,
+    # Postgres sorts nulls last (the `.order(:order)` query in #related), so
+    # unordered items come after ordered ones.
     it 'omits the order key entirely for a relationship with no curator-set order, rather than writing order: null' do
       media_model = create(:place_model, project:, model_class: 'CoreDataConnector::MediaContent')
       rel = create(:project_model_relationship, primary_model: place_model, related_model: media_model, name: 'Media', multiple: true)
@@ -340,16 +304,11 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(media.find { |item| item[:name] == 'Unordered' }).not_to(have_key(:order))
     end
 
-    # Regression: found immediately after the denomination fix above, in the
-    # exact same production document - each of a church's own `works[]`
-    # entries re-embedded that *same church* under a `church:` key, because a
-    # Work's inverse relationship (walked while expanding the work's own
-    # related_to at depth 0) resolves straight back to the Place that owns
-    # it. The denomination case was a taxonomy term reflecting outward to its
-    # *other* members; this is the more direct case of a child pointing
-    # straight back to its own parent - both are the same underlying gap
-    # (nothing tracked which records were already being serialized higher up
-    # the call stack), just reached via different relationship shapes.
+    # A record is not embedded again inside its own nested records. Each of a
+    # place's `works[]` entries would otherwise re-embed the same place through the
+    # work's inverse relationship, which resolves back to the place that owns it.
+    # `visited` tracks the records already being serialized, so this applies to any
+    # relationship that leads back to an ancestor.
     it 'does not re-embed the record itself when a related record\'s inverse relationship points back to it' do
       works_model = create(:place_model, project:, model_class: 'CoreDataConnector::Work')
       works_rel = create(
@@ -421,9 +380,8 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(v1_place.related_to[:contains]).to(include(name: 'Grady County'))
     end
 
-    # Same orphan-tolerance regression as #related above, inverse
-    # direction - #related_to called .find on relation.primary_record_id
-    # directly, same RecordNotFound exposure for a dangling row.
+    # The inverse direction also skips a relationship row whose record has been
+    # deleted, as #related does.
     it 'skips a relationship row whose primary_record was deleted, rather than raising' do
       county_model = create(:place_model, project:)
       county = create(:place, project_model: county_model, name: 'Grady County')
@@ -437,18 +395,9 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
   end
 
   describe '#featured' do
-    # NOTE: the key here is *not* `featured_media` despite this method's own
-    # docstring saying "e.g. Place's featured_media" - that comment turned
-    # out to be aspirational, never actually verified against real
-    # behavior. The real key is just the relationship's own name,
-    # parameterized and singularized, with no "featured_" prefix at all -
-    # ported faithfully from v0 (OpenGeographies::Searchable#featured
-    # does the identical `slug.singularize`, no prefix). For a relationship
-    # named "Media" specifically, ActiveSupport's inflector singularizes
-    # "media" to "medium" (the singular of "medium/media" in English), which
-    # reads oddly but matches both v0 and v1 today - flagged, not changed
-    # here, since it's a pre-existing v0 behavior this test should describe
-    # accurately, not silently redesign.
+    # The key is the relationship's name, parameterized and singularized, with no
+    # "featured_" prefix. ActiveSupport singularizes "media" to "medium", so a
+    # relationship named "Media" is written at :medium.
     it 'promotes the related record whose Featured UDF is checked to a singular key' do
       media_model = create(:place_model, project:, model_class: 'CoreDataConnector::MediaContent')
       rel = create(:project_model_relationship, primary_model: place_model, related_model: media_model, name: 'Media', multiple: true)

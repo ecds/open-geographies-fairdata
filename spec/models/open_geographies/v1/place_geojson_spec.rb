@@ -48,12 +48,10 @@ RSpec.describe('OpenGeographies::V1::Place geojson export') do
       expect(v1_place.geojson_features.first[:properties][:admin_level]).to(eq('ADM2'))
     end
 
-    # Regression coverage for the actual reason this exists: #extras (used
-    # for the ES index) only ever computes a single centroid point via SQL -
-    # correct for a search summary, but it throws away the real shape. A
-    # GeometryCollection (Georgia Coast has 1,766 of them - e.g. a barrier
-    # island's separate islets) must explode into one Feature per member
-    # geometry here, not collapse to one point.
+    # #extras (used for the search index) only computes a centroid, which is
+    # enough for a search summary but discards the real shape. A
+    # GeometryCollection must be split into one Feature per member geometry and
+    # not collapsed to a point.
     it 'explodes a GeometryCollection into one Feature per member geometry' do
       place = create(:place, project_model: place_model, name: 'Multi-Part Feature')
       collection = factory.collection([factory.point(-81.0, 34.0), factory.point(-82.0, 35.0)])
@@ -101,9 +99,8 @@ RSpec.describe('OpenGeographies::V1::Place geojson export') do
       expect(OpenGeographies::V1::Place.each_geojson_feature(place_model)).to(be_an(Enumerator))
     end
 
-    # This pipeline's output is uploaded straight to a public S3 bucket -
-    # unlike the ES index, nothing else stands between an unpublished
-    # record and the public unless this query enforces it itself.
+    # The output is typically published publicly and, unlike the search index,
+    # nothing else filters out unpublished records, so this query must.
     it 'excludes an unpublished place, matching should_index?' do
       published = create(:place, project_model: place_model, name: 'Published Church')
       create(:place_geometry, place: published, geometry: factory.point(-81.0, 34.0))
@@ -115,11 +112,9 @@ RSpec.describe('OpenGeographies::V1::Place geojson export') do
       expect(features.map { |f| f[:properties][:name] }).to(eq(['Published Church']))
     end
 
-    # A place's Contained In target (a county boundary a church belongs to,
-    # say) is usually not itself a member of the project_model being
-    # exported - often not even the same project (the "Administrative
-    # Areas" pattern from this session) - so it would never appear in this
-    # export on its own. Pulling it in is the actual point of these specs.
+    # A place's Contained In target (such as the county a place belongs to) is
+    # usually not a member of the project_model being exported, and is often in
+    # another project, so it would not be exported unless it is pulled in.
     describe "a place's Contained In target" do
       def build_contained_in_setup(area_geometry)
         county_model = create(:place_model, project:)
@@ -150,16 +145,9 @@ RSpec.describe('OpenGeographies::V1::Place geojson export') do
         expect(admin_features.first[:geometry]['type']).to(eq('Polygon'))
       end
 
-      # Load-bearing, not decoration: verified empirically (see this
-      # method's own doc comment) that og_pmtiles.rake's
-      # --drop-densest-as-needed thins ALL points in the tile together
-      # regardless of how "important" one is, and at a whole-state zoom
-      # most of Georgia's 29 counties never made it into the tile at all
-      # without this pin - no MapLibre style setting can render a feature
-      # tippecanoe never included. Deliberately NOT applied to an ordinary
-      # place - a 5,000+-point atlas like Georgia Coast still wants real
-      # density thinning for its own places; only the small, bounded set
-      # of admin areas should be exempt from it.
+      # Admin-area features are pinned to tippecanoe.minzoom 0 so that
+      # --drop-densest-as-needed, which thins points across the whole tile, cannot
+      # drop them at low zooms. Ordinary places are not pinned and are still thinned.
       it 'pins every admin-area feature to tippecanoe.minzoom: 0, exempting it from density-based tile thinning' do
         polygon = factory.polygon(factory.linear_ring([
           factory.point(-83.6, 32.4),
@@ -178,11 +166,9 @@ RSpec.describe('OpenGeographies::V1::Place geojson export') do
         expect(church_feature).not_to(have_key(:tippecanoe))
       end
 
-      # model_id/model_name are how a client tells a --place-model feature
-      # apart from a walked-in Contained In one by more than the presence
-      # of `contained_in` - they name which project_model each side
-      # actually came from, since a Contained In chain can pass through a
-      # project_model that isn't the one og_pmtiles was asked to export.
+      # model_id and model_name say which project_model each feature came from.
+      # A Contained In chain can pass through a project_model other than the one
+      # being exported, so `contained_in` alone is not enough.
       it "tags the church with --place-model's own project_model, and the county with its own, different one" do
         polygon = factory.polygon(factory.linear_ring([
           factory.point(-83.6, 32.4),

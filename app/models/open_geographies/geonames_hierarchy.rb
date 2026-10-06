@@ -128,12 +128,9 @@ module OpenGeographies
       lat.to_f.round(6) != current_lat.to_f.round(6) || lng.to_f.round(6) != current_lng.to_f.round(6)
     end
 
-    # jsonb round-trips through Postgres with string keys, not the symbol
-    # keys .fetch builds - without this override, a cache hit silently
-    # returns { "name" => ... } while a fresh fetch returns { name: ... },
-    # so callers doing hierarchy.first[:name] get nil half the time
-    # depending on whether the cache was warm. Symbolizing here means
-    # every caller gets the same shape regardless of cache state.
+    # jsonb comes back from Postgres with string keys, while .fetch builds
+    # symbol keys. Symbolizing here gives callers the same shape whether the
+    # value came from the cache or from a fresh fetch.
     def hierarchy
       super&.map(&:symbolize_keys)
     end

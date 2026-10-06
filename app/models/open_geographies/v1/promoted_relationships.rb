@@ -2,24 +2,18 @@
 
 module OpenGeographies
   module V1
-    # The registry of which relationship names count as OG-compliant
-    # promotions, derived directly from the canonical schema template
-    # (og_schema/canonical_template.json) rather than hand-maintained a
-    # second time in Ruby. That file already carries this information -
-    # every relationship meant to promote already has an og.promote target
-    # on it - and it's also what a future provisioning CLI would read to
-    # *create* compliant structure in the first place. One file, two
-    # readers, so they can't drift apart the way a flag-based mechanism
-    # and the UI that sets it could.
+    # The registry of which relationship names count as promotions, derived
+    # from the canonical schema template (lib/open_geographies_fairdata/v1/
+    # canonical_template.json) and not maintained a second time in Ruby. Every
+    # relationship that promotes has an og.promote target in that file, which
+    # is also what a provisioning tool would read to create the structure, so
+    # both read the same source.
     #
-    # Exact match only, by design: "types" or "Type" (wrong case or
-    # pluralization) does not count as the "Types" relationship. OG
-    # compliance means using the documented name, not the indexer guessing
-    # at what a curator probably meant - see the discussion that led here
-    # for why a flag-based mechanism was ruled out (it would require
-    # columns on ProjectModelRelationship/UserDefinedField in
-    # core-data-connector, a repo this engine doesn't own and can't diverge
-    # from indefinitely).
+    # Matching is exact by design: "types" or "Type" (wrong case or plural)
+    # does not count as the "Types" relationship. A compliant atlas uses the
+    # documented name, and the indexer does not guess. A database flag was not
+    # used because it would need new columns on ProjectModelRelationship and
+    # UserDefinedField in core-data-connector, which this engine does not own.
     module PromotedRelationships
       TEMPLATE_PATH = ::OpenGeographies::Engine.root.join(
         'lib', 'open_geographies_fairdata', 'v1', 'canonical_template.json'
@@ -37,13 +31,13 @@ module OpenGeographies
         end
       end.freeze
 
-      # Same idea as BY_TEMPLATE_MODEL, but for scalar user_defined_fields
-      # rather than relationships - e.g. Map Layers' "Date"/"Bearing" UDFs
-      # promote to top-level "date"/"bearing"; "Source Type"/"Source URLs"
-      # promote to the dotted path "source.type"/"source.urls", which
-      # Searchable#user_defined_fields merges into one `source: {type:,
-      # urls:}` object. Values stay as bare strings (not stored as
-      # promote.to_sym), since dotted paths aren't valid symbols.
+      # Like BY_TEMPLATE_MODEL, but for scalar user_defined_fields. For example
+      # Map Layers' "Date" and "Bearing" fields promote to top-level "date" and
+      # "bearing", and "Source Type" and "Source URLs" promote to the dotted
+      # paths "source.type" and "source.urls", which
+      # Searchable#user_defined_fields merges into one `source: {type:, urls:}`
+      # object. Values are kept as strings and not converted with
+      # promote.to_sym, since dotted paths are not valid symbols.
       # { "Map Layers" => { "Date" => "date", "Source Type" => "source.type", ... }, ... }
       BY_TEMPLATE_MODEL_UDFS = TEMPLATE[:project_models].each_with_object({}) do |project_model, hash|
         fields = project_model[:user_defined_fields] || []
@@ -53,10 +47,8 @@ module OpenGeographies
         end
       end.freeze
 
-      # model_type is an index-layer concept (see og_schema/README.md's
-      # authoring-vs-index split) - it doesn't live in the template, which
-      # describes the authoring layer, so it's mapped here rather than
-      # added as a new key to a file we don't unilaterally get to redesign.
+      # model_type belongs to the index layer. The template describes the
+      # authoring layer, so it is mapped here and not added to the template.
       MODEL_TYPE_BY_TEMPLATE_MODEL = {
         'Places' => 'place',
         'Media' => 'media',
@@ -69,9 +61,9 @@ module OpenGeographies
         'Tours' => 'tour',
       }.freeze
 
-      # Unambiguous superclass -> template entry. CoreDataConnector::Place is
-      # deliberately absent here - it's the one case that needs
-      # ProjectModelRole, handled separately below.
+      # Template entry for each superclass that maps to exactly one. Place is
+      # left out because it is shared by "Places" and "Map Layers" and is
+      # resolved through ProjectModelRole instead.
       UNAMBIGUOUS_TEMPLATE_MODEL_BY_SUPERCLASS = {
         ::CoreDataConnector::MediaContent => 'Media',
         ::CoreDataConnector::Work => 'Works',
@@ -89,11 +81,10 @@ module OpenGeographies
         # exception - shared by "Places" and "Map Layers" - resolved via
         # ProjectModelRole rather than guessed at.
         #
-        # Deliberately `==`, not a `case/when` on record.class.superclass:
-        # `when SomeClass` tests `SomeClass === value`, which for a bare
-        # Class literal means "is value an *instance* of SomeClass" - but
-        # record.class.superclass is itself a Class, not an instance of
-        # one, so every branch would silently and permanently fail to match.
+        # Compares with `==` and not `case/when`. `when SomeClass` tests
+        # `SomeClass === value`, which for a class literal checks whether the value
+        # is an instance of it, and record.class.superclass is a Class and not an
+        # instance, so no branch would ever match.
         def template_model_name_for(record)
           superclass = record.class.superclass
 

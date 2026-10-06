@@ -2,12 +2,9 @@
 
 require 'rails_helper'
 
-# Real Elasticsearch, not a mock - this is specifically the check that
-# catches mapping/document shape mismatches (the class of bug that "Address"
-# and "preview" and "bbox" all turned out to be, all found by hand this
-# session before this spec existed). A pure-Ruby assertion on search_data's
-# hash output can never catch "the mapping rejects this shape" - only an
-# actual index write can.
+# Uses a real Elasticsearch index and not a mock, to catch mismatches between
+# the document and the mapping. A plain Ruby assertion on search_data's hash
+# cannot detect that the mapping rejects a shape; only an index write can.
 RSpec.describe('V1 Place Elasticsearch indexing') do
   after do
     index = OpenGeographies::V1::Place.searchkick_index

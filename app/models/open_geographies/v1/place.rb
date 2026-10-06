@@ -12,52 +12,28 @@ module OpenGeographies
       self.table_name = 'core_data_connector_places'
 
       class << self
-        # Streams GeoJSON Features for every place in `project_model` -
-        # for a bulk vector-tile pipeline (tippecanoe/pmtiles), not the ES
-        # index (see #geojson_features for why this needs its own path
-        # rather than reusing #extras/#search_data directly). Batched via
-        # find_each so a multi-thousand-record atlas (Georgia Coast has
-        # 5,000+) doesn't load every record into memory at once. Yields
-        # each Feature if a block is given; otherwise returns an
-        # Enumerator - `.to_a` that into a FeatureCollection, or stream it
-        # straight into whatever builds the tiles. This engine owns the
-        # data shape, deliberately not how it gets tiled or published -
-        # see core-data-cloud's pmtiles pipeline for that.
+        # Streams one GeoJSON Feature per geometry for every published place
+        # in `project_model`, for building vector tiles in bulk. It reads the
+        # database directly and does not go through the search index (see
+        # #geojson_features). Records are loaded in batches. Yields each
+        # Feature when a block is given, otherwise returns an Enumerator.
         #
-        # Also emits each exported place's whole Contained In chain, not
-        # just the immediate target - a church's county, that county's own
-        # state, and so on up until something has no further Contained In
-        # relationship. None of these are members of `project_model`,
-        # often not even the same project (the "Administrative Areas"
-        # pattern from this session), so they'd never appear in this
-        # export otherwise. Deduped by id, tracked across the whole run
-        # (not just within one place's own chain): most places in a
-        # `project_model` share the same county and state, and a naive
-        # per-place emit would write those same boundaries hundreds of
-        # times over. Marked `contained_in: true` in its own properties,
-        # distinct from every property a real #geojson_properties call
-        # ever produces, so a map client can tell an admin-area shape
-        # apart from this project_model's own places without guessing
-        # from project/name.
+        # Each exported place's whole Contained In chain is emitted too: its
+        # county, that county's state, and so on up to a record with no
+        # Contained In relationship. These records usually belong to another
+        # project_model, often in another project, so they would not
+        # otherwise be exported. Each one is emitted once, deduplicated across
+        # the whole run, and tagged `contained_in: true` so a client can tell
+        # it apart from the exported model's own places.
         #
-        # Walking continues past an unpublished link even though it isn't
-        # itself emitted (see the #published note below) - a hidden county
-        # shouldn't also hide the state above it, and visited_area_ids
-        # doubles as cycle protection regardless of publish state, so a
-        # malformed Contained In loop can't hang this in an infinite walk.
-        # See #emit_admin_area_feature for why every member geometry of an
-        # admin area is emitted, not just its boundary shape.
+        # The walk continues past an unpublished link without emitting it, so
+        # a hidden county does not also hide the state above it. The visited
+        # set also guards against cycles in malformed Contained In data.
         #
-        # Scoped to #published, matching Searchable#should_index? (the ES
-        # indexing gate) - the raw ActiveRecord query here never goes
-        # through Searchkick at all, so nothing enforces that gate unless
-        # this does it directly. Matters more here than for search: this
-        # pipeline's output is uploaded straight to a public S3 bucket
-        # behind CloudFront (see core-data-cloud's rake task), so an
-        # unpublished record leaking in isn't just an inconsistency, it's
-        # a real exposure - a draft a curator deliberately hid, baked into
-        # a public file. Each link in a Contained In chain gets the same
-        # check before being emitted, for the same reason.
+        # Only published records are exported, matching the search indexing
+        # gate in Searchable#should_index?. This query does not go through
+        # Searchkick, so the check has to happen here. Exported output is
+        # usually served publicly, so an unpublished record must not reach it.
         def each_geojson_feature(project_model, &block)
           return enum_for(:each_geojson_feature, project_model) unless block_given?
 
@@ -77,41 +53,20 @@ module OpenGeographies
 
         private
 
-        # Every member of #geojson_features' own explode, not just the
-        # boundary shape - an admin area combined this session (Georgia's
-        # counties) carries a GeometryCollection of its original WordPress
-        # Point *and* its real boundary Polygon, and both are wanted: the
-        # Polygon is what renders the area, and the Point is what a
-        # client's label layer anchors text to (a MapLibre symbol layer
-        # placed directly on a Polygon can auto-place at a computed
-        # interior point, but that's not always where a curator's own
-        # marker was, and not every consumer wants to rely on it). Both
-        # get the same `contained_in: true` tag - a client distinguishes
-        # the two by geometry type (`["==", ["geometry-type"], "Point"]`
-        # for a label symbol layer), the same way it already tells an
-        # admin area apart from a --place-model place at all.
+        # Emits every member geometry of an admin area, not just its
+        # boundary. An area stored as a GeometryCollection can hold both a
+        # marker Point and a boundary Polygon: the Polygon renders the area
+        # and the Point gives a label layer a fixed anchor. Every member is
+        # tagged `contained_in: true`; a client tells them apart by geometry
+        # type, e.g. `["==", ["geometry-type"], "Point"]` for labels.
         #
-        # `tippecanoe: { minzoom: 0 }` is a top-level GeoJSON Feature
-        # member Tippecanoe itself reads (sibling of properties/geometry,
-        # stripped before it becomes a tile attribute) - not decoration,
-        # load-bearing. Verified empirically (a synthetic reproduction of
-        # this atlas's real proportions - 78 place points + 29 admin
-        # points): og_pmtiles.rake's --drop-densest-as-needed thins ALL
-        # points in the layer together by density, admin or not, so at a
-        # whole-state zoom only ~10 of 29 counties survived into the tile
-        # at all - no MapLibre paint/layout setting can render a feature
-        # that was never in the tile. Giving a feature its own explicit
-        # tippecanoe.minzoom exempts *only that feature* from the
-        # automatic density-based drop decision (confirmed: with this pin,
-        # 29/29 admin features survived at the same zoom, while ordinary
-        # place points kept their own natural thinning, unaffected -
-        # exactly the point, since a 5,000+-point atlas like Georgia Coast
-        # still wants that thinning for its own places). Tried routing
-        # admin features into their own separate tippecanoe.layer first,
-        # expecting an independent per-layer size/density budget - verified
-        # empirically that tippecanoe's density thinning is computed across
-        # the whole tile regardless of output layer, so that alone changed
-        # nothing (still ~10/29) and isn't the mechanism to reach for here.
+        # `tippecanoe: { minzoom: 0 }` is a top-level Feature member that
+        # tippecanoe reads and does not write to the tile as an attribute. A
+        # feature with an explicit minzoom is exempt from density-based
+        # dropping (--drop-densest-as-needed), which otherwise thins points
+        # across the whole tile regardless of layer. Without it, admin area
+        # points are dropped at low zooms and no map style can bring back a
+        # feature that is not in the tile.
         def emit_admin_area_feature(area, &block)
           area.geojson_features.each do |feature|
             block.call(feature.merge(
@@ -143,11 +98,9 @@ module OpenGeographies
         suffix ? "#{base}-#{suffix}" : base
       end
 
-      # The un-suffixed value stays in `slugs` too (alongside the suffixed
-      # one) so an existing link built before this record ever had a
-      # containing area resolved (or before this feature existed) still
-      # resolves - see Searchable#slugs's own doc comment for why `slugs`
-      # is deliberately more permissive than the single canonical `slug`.
+      # Includes the unsuffixed slug alongside the suffixed one, so links built
+      # before a containing area was resolved still match. See Searchable#slugs
+      # for why `slugs` accepts more values than the single canonical `slug`.
       def slugs
         base_slugs = super
         suffix = containing_area_slug
@@ -156,25 +109,11 @@ module OpenGeographies
         (base_slugs + base_slugs.map { |candidate| "#{candidate}-#{suffix}" }).uniq
       end
 
-      # One GeoJSON Feature per underlying geometry, not per record: a
-      # GeometryCollection (a non-contiguous record - Georgia Coast has
-      # 1,766 of them, e.g. a barrier island's separate islets) explodes
-      # into one Feature per member geometry, matching what a map
-      # renderer actually wants - independent shapes, not one indivisible
-      # multi-part blob a click can't distinguish. #extras only ever
-      # computes a centroid point (right for a search-facing summary;
-      # search doesn't need the actual shape), so this reads the real
-      # geometry straight from place_geometry instead.
-      #
-      # Properties are a deliberately flat subset of #search_data (not the
-      # full nested document - unlike an ES summary, a vector-tile
-      # feature's properties should stay small) using the exact same
-      # canonical field names/values as everywhere else in v1 - "follows
-      # the OG schema" by construction, not by a second hand-maintained
-      # mapping (compare core-data-cloud's pre-v1, GCA-specific
-      # Ecds::Geojson, which hardcodes its own per-atlas UUID/
-      # related_model_id property mapping - this is the generalized
-      # replacement, any v1 atlas gets the same properties for free).
+      # Returns one GeoJSON Feature per underlying geometry. A
+      # GeometryCollection (a record made of several separate shapes) is split
+      # into one Feature per member, so each shape can be drawn and clicked on
+      # its own. The real geometry is read from place_geometry; #extras only
+      # computes a centroid, which is enough for search but not for drawing.
       def geojson_features
         return [] unless place_geometry&.geometry
 
@@ -186,13 +125,9 @@ module OpenGeographies
         end
       end
 
-      # The curator-built hierarchy, resolved the same way #related_to
-      # would for the promoted relationship, but standalone and public:
-      # #slug needs it before #related ever runs (as part of
-      # #base_search_data), and #each_geojson_feature needs it on an
-      # explicit receiver (another place's own #contained_in_place, not
-      # self's) to pull each exported place's containing admin area into
-      # the PMTiles output too - private wouldn't allow that second case.
+      # The place this one is contained in, found through the model's promoted
+      # Contained In relationship. Public because #slug needs it before
+      # #related runs, and #each_geojson_feature calls it on other places.
       def contained_in_place
         rel_name = PromotedRelationships.for(self).key(:contained_in_place)
         return unless rel_name
@@ -206,39 +141,26 @@ module OpenGeographies
 
       private
 
-      # GeoNames' fcode vocabulary, most-specific first (see
-      # GeonamesHierarchy) - only ADM1/ADM2/PCLI actually come back from
-      # the reverse-geocoder today, but ranking the full scheme costs
-      # nothing and means a future finer level (ADM3+) is picked up
-      # automatically instead of silently falling through the .fetch
-      # default.
+      # GeoNames feature codes ranked from most specific (0) to broadest.
+      # Only ADM1, ADM2 and PCLI come back from the reverse geocoder today;
+      # ranking the rest means finer levels are handled if they appear. Codes
+      # not listed here get whatever default is passed to `.fetch`.
       GEONAMES_LEVEL_SPECIFICITY = { 'ADM5' => 0, 'ADM4' => 1, 'ADM3' => 2, 'ADM2' => 3, 'ADM1' => 4, 'PCLI' => 5 }.freeze
 
-      # Memoized: #slug, #slugs, and #extras each independently want the
-      # containing-area name for one record's #search_data - without this,
-      # a single index write pays for ST_Centroid three times over.
+      # The name of the area containing this place, parameterized, used as a
+      # slug suffix to tell apart places that share a name. Memoized because
+      # #slug, #slugs and #extras each need it for the same record.
       #
-      # Reads #contained_in_place's own #name, not its #slug - calling
-      # #slug would recurse into this same suffixing on the target itself
-      # and compound at every level of a hierarchy a curator built deep
-      # (county's own "Contained In" -> state would otherwise turn
-      # "putnam-county" into "putnam-county-georgia", one level deeper
-      # than intended).
+      # It uses the containing place's #name and not its #slug, so the suffix
+      # does not pick up another suffix at every level of the hierarchy. When
+      # the place has no Contained In relationship, it falls back to a GeoNames
+      # reverse geocode of the place's centroid.
       #
-      # Skips entirely for a top-level admin area (a state/PCLI-equivalent
-      # record whose own Admin Level UDF is ADM1 or broader) - the
-      # disambiguation this exists for only makes sense for records that
-      # can plausibly collide by name (churches; counties, if this pattern
-      # is ever reused for a multi-state atlas), and a state has nothing
-      # real to disambiguate against. Real bug this guard fixes: Georgia
-      # (ADM1) has no Contained In relationship of its own, so this fell
-      # through to #geonames_area_name, which reverse-geocodes the state's
-      # *centroid* and returns whatever small ADM2 unit happens to overlap
-      # that single point - "georgia-twiggs", a county picked essentially
-      # at random by where the centroid landed, not a real containing
-      # relationship. Ordinary places (no Admin Level UDF at all, e.g. a
-      # church) are unaffected - #admin_level is nil for them, which never
-      # matches the ADM1-or-broader check below.
+      # Top-level admin areas (Admin Level ADM1 or broader) get no suffix.
+      # They have no containing area, and reverse geocoding their centroid
+      # would return an unrelated smaller unit that happens to overlap it.
+      # Places without an Admin Level field are unaffected, because
+      # #admin_level is nil for them.
       def containing_area_slug
         return if top_level_admin_area?
 
@@ -249,14 +171,17 @@ module OpenGeographies
         GEONAMES_LEVEL_SPECIFICITY.fetch(admin_level, -1) >= GEONAMES_LEVEL_SPECIFICITY.fetch('ADM1')
       end
 
-      # The record's own Admin Level UDF value (ADM1/ADM2/PCLI/...), read
-      # through the same #user_defined_fields mechanism every other UDF
-      # uses - not a hardcoded UUID, so this works for any project_model
-      # that happens to define a UDF named "Admin Level", not just today's
-      # Administrative Areas one. nil for every record whose project_model
-      # has no such field (every real place, e.g. a church).
+      # This record's value for the "Admin Level" user-defined field (ADM1,
+      # ADM2, PCLI, ...), or nil when its project_model has no such field.
+      # The field is found by column name, so it works for any model that
+      # defines it.
+      #
+      # The value is read directly and not through #user_defined_fields,
+      # because that method calls #slugs, which reaches this method through
+      # #containing_area_slug, and the calls would recurse without end.
       def admin_level
-        user_defined_fields.dig(:admin_level, :value)
+        ud = project_model.user_defined_fields.find { |field| field.column_name == 'Admin Level' }
+        ud && user_defined[ud.uuid]
       end
 
       def geonames_area_name
@@ -271,37 +196,18 @@ module OpenGeographies
         hierarchy.min_by { |entry| GEONAMES_LEVEL_SPECIFICITY.fetch(entry[:level], 99) }&.dig(:name)
       end
 
-      # Deliberately not #search_data: that calls #extras, which does a
-      # live GeoNames HTTP lookup (GeonamesHierarchy.lookup) for any
-      # record with no cached hierarchy yet - a few seconds' latency the
-      # ES indexer happily pays once per record, but ruinous multiplied
-      # across a bulk export of thousands (found live: a 10-record sample
-      # against Georgia Coast Atlas didn't finish in two minutes). None of
-      # these properties need administrative_area/geo anyway - the real
-      # geometry comes from place_geometry directly, not the centroid
-      # #extras computes for the ES index. #base_search_data alone is
-      # cheap (local attribute reads only); #promoted_type_names below is
-      # a direct, single-relationship query rather than the generic
-      # #related walk, which would call #summarize - and so #extras - on
-      # every *other* promoted relationship's related records too
-      # (County, Map Layers, ... - several of Georgia Coast's own Places
-      # relationships point at other Place records).
+      # A flat subset of #base_search_data, kept small because these become
+      # vector tile attributes.
       #
-      # model_id/model_name are #base_search_data's already-computed
-      # project_model.id/name, surfaced here so a client (or a human
-      # inspecting the exported GeoJSON) can tell which project_model a
-      # given feature actually came from - the og_pmtiles rake task
-      # resolves one project_model from its --place-model option, but
-      # .each_geojson_feature also walks in Contained In targets from
-      # whatever *other* project_model each one belongs to (the
-      # "Administrative Areas" pattern), and those show up in the same
-      # flat feature stream with no other property naming their source.
-      # `contained_in` alone only says "not a place from --place-model" -
-      # it doesn't say which model the feature IS from, and a chain can
-      # walk through more than one (a county, then that county's own
-      # differently-modeled state).
+      # It does not use #search_data, which calls #extras and can make a live
+      # GeoNames request for each record. Types come from a single direct
+      # query (#promoted_type_names) and not the generic #related walk, which
+      # would summarize related places and so call #extras on them too.
       #
-      # admin_level is #admin_level below (see its own doc comment).
+      # model_id and model_name identify the project_model a feature came
+      # from. Features reached through Contained In can come from several other
+      # models, and `contained_in` alone does not say which. admin_level is
+      # #admin_level.
       def geojson_properties
         data = base_search_data
         {
@@ -327,12 +233,9 @@ module OpenGeographies
         ::CoreDataConnector::Relationship.where(project_model_relationship: rel, primary_record: self).map { |r| r.related_record.name }
       end
 
-      # SQL, not RGeo, computes this: geometry isn't always a bare Point (some
-      # records store a GeometryCollection), and RGeo's GEOS binding here
-      # doesn't expose a Ruby-level #centroid at all (raises NoMethodError) -
-      # only PostGIS's ST_Centroid reliably handles arbitrary geometry types,
-      # which is exactly why CoreDataConnector::Place.centroid_function
-      # computes this in SQL rather than Ruby too.
+      # Computed in SQL because the geometry is not always a bare Point (some
+      # records are a GeometryCollection) and RGeo's GEOS binding has no
+      # #centroid. PostGIS's ST_Centroid handles any geometry type.
       def centroid
         @centroid ||= ::CoreDataConnector::PlaceGeometry.connection.select_one(
           ::CoreDataConnector::PlaceGeometry.sanitize_sql_array([

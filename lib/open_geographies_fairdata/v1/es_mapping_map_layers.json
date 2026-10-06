@@ -1,5 +1,5 @@
 {
-  "$comment": "Elasticsearch mapping for the separate open_geographies_v1_map_layers index. Map Layers get their own index (not the shared open_geographies_v1 one) because their primary query shape is spatial-extent search (bbox as geo_shape) rather than the point/text search the shared index is built around, and because a Place-class record playing the 'map_layer' role (see ProjectModelRole) has a materially different document shape than a real Place. Shares the same envelope fields, settings, and dynamic_templates as es_mapping.json by convention, not by reference - keep them in sync by hand for now.",
+  "$comment": "Elasticsearch mapping for the separate open_geographies_v1_map_layers index. Map Layers have their own index, and do not use the shared open_geographies_v1 one, because they are queried by spatial extent (bbox as geo_shape) and not by point or text, and because a Place-class record with the 'map_layer' role (see ProjectModelRole) has a different document shape from a regular Place. The envelope fields, settings and dynamic_templates are the same as in es_mapping.json by convention and not by reference, so keep them in sync by hand.",
 
   "settings": {
     "analysis": {

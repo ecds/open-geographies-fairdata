@@ -96,15 +96,12 @@ RSpec.describe('V1::Place slug disambiguation') do
     end
   end
 
-  # Real bug found on real Georgia admin-area data: Georgia (ADM1) has no
-  # Contained In relationship of its own, so this fell through to the
-  # GeoNames fallback, which reverse-geocodes the state's centroid and
-  # returns whatever small ADM2 unit happens to overlap that one point -
-  # "georgia-twiggs", not a real containing relationship. Disambiguation
-  # only makes sense for records that can plausibly collide by name
-  # (churches; counties, in a hypothetical multi-state atlas) - a state
-  # has nothing real to disambiguate against, so this level must be
-  # skipped outright rather than left to whatever the fallback returns.
+  # A top-level admin area (ADM1 or broader, such as a state) has no containing
+  # area, so it gets no slug suffix. Without this it would fall through to the
+  # GeoNames fallback, which reverse-geocodes the area's centroid and returns
+  # whichever smaller unit overlaps that point, which is not a containing area.
+  # Suffixes are only meant for records that can collide by name, such as
+  # places or counties in a multi-state atlas.
   describe 'a top-level admin area (its own Admin Level UDF is ADM1 or broader)' do
     def admin_place(name:, level:, project_model: place_model)
       udf = create(:user_defined_field, defineable: project_model, column_name: 'Admin Level', data_type: 'Select')

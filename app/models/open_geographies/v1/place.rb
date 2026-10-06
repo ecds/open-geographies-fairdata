@@ -92,6 +92,16 @@ module OpenGeographies
         }
       end
 
+      # Adds the polygon shape to the top-level document only. Nested summaries
+      # of related places have no geo.shape mapping, and embedding a boundary in
+      # every record that points at it would make documents very large.
+      def search_data
+        data = super
+        shape = geo_shape
+        data[:geo] = (data[:geo] || {}).merge(shape:) if shape
+        data
+      end
+
       def slug
         base = super
         suffix = containing_area_slug
@@ -145,6 +155,12 @@ module OpenGeographies
       # Only ADM1, ADM2 and PCLI come back from the reverse geocoder today;
       # ranking the rest means finer levels are handled if they appear. Codes
       # not listed here get whatever default is passed to `.fetch`.
+      # Largest number of vertices kept in the indexed geo_shape. A larger shape is
+      # simplified with the next tolerance in SHAPE_SIMPLIFY_TOLERANCES (degrees)
+      # until it fits, or the last tolerance has been tried.
+      SHAPE_MAX_POINTS = 1_000
+      SHAPE_SIMPLIFY_TOLERANCES = [0.0001, 0.0005, 0.002, 0.01, 0.05].freeze
+
       GEONAMES_LEVEL_SPECIFICITY = { 'ADM5' => 0, 'ADM4' => 1, 'ADM3' => 2, 'ADM2' => 3, 'ADM1' => 4, 'PCLI' => 5 }.freeze
 
       # The name of the area containing this place, parameterized, used as a
@@ -182,6 +198,38 @@ module OpenGeographies
       def admin_level
         ud = project_model.user_defined_fields.find { |field| field.column_name == 'Admin Level' }
         ud && user_defined[ud.uuid]
+      end
+
+      # The polygon part of this place's geometry as GeoJSON for the geo_shape
+      # field, or nil when it has none. Points are covered by geo.point and lines
+      # are left out. Shapes over SHAPE_MAX_POINTS vertices are simplified.
+      def geo_shape
+        return unless place_geometry&.geometry
+
+        best = nil
+        [nil, *SHAPE_SIMPLIFY_TOLERANCES].each do |tolerance|
+          row = polygon_shape_row(tolerance)
+          break unless row
+
+          best = row
+          break if row['points'].to_i <= SHAPE_MAX_POINTS
+        end
+
+        best && JSON.parse(best['geojson'])
+      end
+
+      def polygon_shape_row(tolerance)
+        shape_sql = 'ST_CollectionExtract(geometry, 3)'
+        shape_sql = "ST_SimplifyPreserveTopology(#{shape_sql}, #{tolerance.to_f})" if tolerance
+
+        ::CoreDataConnector::PlaceGeometry.connection.select_one(
+          ::CoreDataConnector::PlaceGeometry.sanitize_sql_array([
+            "SELECT ST_NPoints(shape) AS points, ST_AsGeoJSON(shape, 6) AS geojson " \
+              "FROM (SELECT #{shape_sql} AS shape FROM core_data_connector_place_geometries WHERE id = ?) shapes " \
+              "WHERE NOT ST_IsEmpty(shape)",
+            place_geometry.id,
+          ]),
+        )
       end
 
       def geonames_area_name

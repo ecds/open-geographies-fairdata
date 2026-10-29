@@ -141,6 +141,68 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
 
       expect(v1_map_layer.user_defined_fields[:source]).to(eq({ type: 'wms', urls: ['https://example.com/wms'] }))
     end
+
+    describe 'reserved keys' do
+      let(:fuzzy_date) do
+        { 'start_date' => '1890-01-01', 'end_date' => '1899-12-31', 'accuracy' => 'decade', 'range' => true, 'description' => '1890s' }
+      end
+
+      it 'writes a field whose key is a canonical scalar property it is not promoted to under <key>_2' do
+        udf = create(:user_defined_field, defineable: place_model, column_name: 'Date', data_type: 'String')
+        place.update!(user_defined: { udf.uuid => 'Spring 1890' })
+
+        fields = v1_place.user_defined_fields
+        expect(fields).not_to(have_key(:date))
+        expect(fields[:date_2]).to(eq({ label: 'Date', value: 'Spring 1890' }))
+      end
+
+      it 'keeps a Select field\'s _facet companion under the field\'s own name when the field moves to <key>_2' do
+        udf = create(:user_defined_field, defineable: place_model, column_name: 'Media Type', data_type: 'Select')
+        place.update!(user_defined: { udf.uuid => 'Photograph' })
+
+        fields = v1_place.user_defined_fields
+        expect(fields).not_to(have_key(:media_type))
+        expect(fields[:media_type_2]).to(eq({ label: 'Media Type', value: 'Photograph' }))
+        expect(fields[:media_type_facet]).to(eq('Photograph'))
+      end
+
+      it 'leaves a field promoted to its own non-date key in place, with no <key>_2' do
+        udf = create(:user_defined_field, defineable: place_model, column_name: 'Address', data_type: 'String')
+        place.update!(user_defined: { udf.uuid => '497 Meridian Rd' })
+
+        fields = v1_place.user_defined_fields
+        expect(fields[:address]).to(eq('497 Meridian Rd'))
+        expect(fields).not_to(have_key(:address_2))
+      end
+
+      it 'promotes a fuzzy date to its date property as the first day, and keeps the whole value under <key>_2' do
+        layer_model = create(:place_model, project:)
+        create(:project_model_role, project_model_record: layer_model, role: 'map_layer')
+        udf = create(:user_defined_field, defineable: layer_model, column_name: 'Date', data_type: 'FuzzyDate')
+        layer_place = create(:place, project_model: layer_model, user_defined: { udf.uuid => fuzzy_date })
+
+        fields = OpenGeographies::V1::MapLayer.find(layer_place.id).user_defined_fields
+        expect(fields[:date]).to(eq('1890-01-01'))
+        expect(fields[:date_2]).to(eq({ label: 'Date', value: fuzzy_date }))
+      end
+
+      it 'falls back to the end date when a fuzzy date has no start date' do
+        layer_model = create(:place_model, project:)
+        create(:project_model_role, project_model_record: layer_model, role: 'map_layer')
+        udf = create(:user_defined_field, defineable: layer_model, column_name: 'Date', data_type: 'FuzzyDate')
+        layer_place = create(:place, project_model: layer_model, user_defined: { udf.uuid => { 'end_date' => '1899-12-31' } })
+
+        expect(OpenGeographies::V1::MapLayer.find(layer_place.id).user_defined_fields[:date]).to(eq('1899-12-31'))
+      end
+
+      it 'writes a plain (non-fuzzy) value promoted to a date property as is' do
+        works_model = create(:place_model, project:, model_class: 'CoreDataConnector::Work')
+        udf = create(:user_defined_field, defineable: works_model, column_name: 'Date Published', data_type: 'Date')
+        work = create(:work, project_model: works_model, user_defined: { udf.uuid => '1923-06-01' })
+
+        expect(OpenGeographies::V1::Work.find(work.id).user_defined_fields[:date_published]).to(eq('1923-06-01'))
+      end
+    end
   end
 
   describe '#related' do

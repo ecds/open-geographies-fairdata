@@ -61,4 +61,52 @@ RSpec.describe('V1 Place Elasticsearch indexing') do
 
     expect(results.map { |r| r[:name] }).to(include('Putnam County'))
   end
+
+  def find_by_slug(slug)
+    OpenGeographies::V1::Place.search('*', where: { slug: }, load: false).first
+  end
+
+  it 'indexes a curator field labelled "Date" under date_2 without a mapping conflict' do
+    project = create(:project)
+    place_model = create(:place_model, project:)
+    udf = create(:user_defined_field, defineable: place_model, column_name: 'Date', data_type: 'String')
+    create(:place, project_model: place_model, name: 'Spring Hill', user_defined: { udf.uuid => 'Spring 1890' })
+
+    OpenGeographies::V1::Place.reindex(refresh: true)
+
+    expect(find_by_slug('spring-hill')[:date_2]).to(eq({ 'label' => 'Date', 'value' => 'Spring 1890' }))
+  end
+
+  it 'does not map a date-looking text value as a date, so later text values still index' do
+    project = create(:project)
+    place_model = create(:place_model, project:)
+    udf = create(:user_defined_field, defineable: place_model, column_name: 'Founded', data_type: 'String')
+    create(:place, project_model: place_model, name: 'First Church', user_defined: { udf.uuid => '1890-05-14' })
+    OpenGeographies::V1::Place.reindex(refresh: true)
+
+    second = create(:place, project_model: place_model, name: 'Second Church', user_defined: { udf.uuid => 'about 1890' })
+    OpenGeographies::V1::Place.find(second.id).reindex(refresh: true)
+
+    expect(find_by_slug('second-church')[:founded]).to(eq({ 'label' => 'Founded', 'value' => 'about 1890' }))
+  end
+
+  it 'keeps objects below the top level in _source but out of the mapping' do
+    project = create(:project)
+    place_model = create(:place_model, project:)
+    place = create(:place, project_model: place_model, name: 'Mount Olive')
+    org_model = create(:place_model, project:, model_class: 'CoreDataConnector::Organization')
+    note_udf = create(:user_defined_field, defineable: org_model, column_name: 'Legacy Note', data_type: 'String')
+    steward = create(:organization, project_model: org_model, name: 'Friends of Mount Olive', user_defined: { note_udf.uuid => 'internal' })
+    rel = create(:project_model_relationship, primary_model: place_model, related_model: org_model, name: 'Steward', multiple: false)
+    create(:relationship, project_model_relationship: rel, primary_record: place, related_record: steward)
+
+    OpenGeographies::V1::Place.reindex(refresh: true)
+
+    expect(find_by_slug('mount-olive')[:steward][:legacy_note]).to(eq({ 'label' => 'Legacy Note', 'value' => 'internal' }))
+
+    properties = OpenGeographies::V1::Place.searchkick_index.mapping.values.first.dig('mappings', 'properties')
+    expect(properties.dig('steward', 'properties', 'name')).to(be_present)
+    expect(properties.dig('steward', 'properties', 'legacy_note')).to(include('dynamic' => 'false'))
+    expect(properties.dig('steward', 'properties', 'legacy_note', 'properties')).to(be_nil)
+  end
 end

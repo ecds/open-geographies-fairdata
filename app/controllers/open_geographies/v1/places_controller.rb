@@ -25,6 +25,7 @@ module OpenGeographies
       def index
         results = Place.search(
           query_term,
+          index_name: search_index_name,
           fields: SEARCH_FIELDS,
           where: where_clause,
           aggs: FACETABLE_FIELDS,
@@ -48,6 +49,7 @@ module OpenGeographies
       def show
         @record = Place.search(
           '*',
+          index_name: search_index_name,
           where: { model_type: 'place', project_id: project_id, slugs: params[:slug] },
           limit: 1,
           load: false,

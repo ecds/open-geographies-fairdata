@@ -25,6 +25,10 @@ module OpenGeographies
         # one active. With no `on:` filter the callback runs for create, update
         # and destroy, like Searchkick's own `after_commit :reindex`.
         after_commit :og_v1_reindex
+
+        # A record destroyed together with its project has no project to look
+        # its index up by once the commit runs, so it is remembered first.
+        before_destroy :og_v1_remember_project
       end
 
       class << self
@@ -63,8 +67,15 @@ module OpenGeographies
 
           v1_class = "OpenGeographies::V1::#{record.class.name.demodulize}".constantize
           v1_record = recast(record, v1_class)
-          ensure_index!(v1_class)
-          v1_record.reindex
+
+          # The shared layout writes to the shared index. Any other layout
+          # routes the write through Indexes (see OG_INDEX_LAYOUT there).
+          if Indexes.layout == 'shared'
+            ensure_index!(v1_class)
+            v1_record.reindex
+          else
+            Indexes.store(v1_record, project_id: record.instance_variable_get(:@og_v1_project_id))
+          end
         end
 
         # Like Rails' #becomes, which merges into the source record's attributes
@@ -113,6 +124,10 @@ module OpenGeographies
 
       def og_v1_reindex
         Reindexable.reindex_record(self)
+      end
+
+      def og_v1_remember_project
+        @og_v1_project_id = project_model&.project_id if respond_to?(:project_model)
       end
     end
   end

@@ -23,6 +23,14 @@ module OpenGeographies
       )
       MAPPING = JSON.parse(File.read(MAPPING_PATH), symbolize_names: true).freeze
 
+      # Top-level keys the mapping types as something other than an object
+      # (`date`, `address`, ...). A field that writes `{label:, value:}` to one
+      # of these is refused by Elasticsearch, so #user_defined_fields moves it
+      # to `<key>_2`.
+      RESERVED_KEYS = MAPPING.dig(:mappings, :properties).filter_map do |key, property|
+        key if property[:type] && !['object', 'nested'].include?(property[:type])
+      end.to_set.freeze
+
       # Identifies the version of the record format. It is carried inside each
       # record because a record serialized outside this API has no request URL
       # to infer a version from. This is a stable identifier only: the URL does
@@ -170,22 +178,32 @@ module OpenGeographies
           # `slug` while still matching one of the alternates.
           next if parameterized_key == :slug && record.respond_to?(:slugs) && record.slugs.include?(value)
 
-          written_key = assign_unique!(attributes, parameterized_key, { label:, value: })
+          # A field is written under `<key>_2` when its key is in RESERVED_KEYS
+          # and it is not promoted to that key (a curator field labelled "Date"),
+          # or when it is a date promoted to a date property. In the second case
+          # the promoted key holds only the first day (#merge_promoted_udf!) and
+          # `<key>_2` keeps the whole value.
+          promoted_path = promoted[label]
+          reserved = RESERVED_KEYS.include?(parameterized_key) &&
+            (promoted_path.to_s != parameterized_key.to_s || date_property?([parameterized_key]))
+          raw_key = reserved ? :"#{parameterized_key}_2" : parameterized_key
+          written_key = assign_unique!(attributes, raw_key, { label:, value: })
 
           # A `*_facet` companion is written for Select fields, whose values
           # come from a fixed set of options and so can be filtered on. The
           # `facets_as_keyword` dynamic template in es_mapping.json maps it as
           # a keyword. Free text and other types are not facetable in a useful
-          # way and would add high-cardinality terms to the index.
+          # way and would add high-cardinality terms to the index. A field moved
+          # to `<key>_2` above keeps its own name here (`media_type_facet`).
           if user_defined_field.data_type == ::UserDefinedFields::UserDefinedField::DATA_TYPES[:select] && value.present?
-            assign_unique!(attributes, :"#{written_key}_facet", value)
+            facet_key = reserved && written_key == raw_key ? parameterized_key : written_key
+            assign_unique!(attributes, :"#{facet_key}_facet", value)
           end
 
           # Promoted paths are not checked for collisions. They come from the
           # canonical template and not from curators, and a dotted path is
           # meant to write into the same top-level key as its siblings
           # (source.type and source.urls both target :source).
-          promoted_path = promoted[label]
           merge_promoted_udf!(attributes, promoted_path, value) if promoted_path
         end
 
@@ -507,7 +525,27 @@ module OpenGeographies
       def merge_promoted_udf!(attributes, path, value)
         segments = path.split('.').map(&:to_sym)
         target = segments[0..-2].reduce(attributes) { |hash, segment| hash[segment] ||= {} }
-        target[segments.last] = value
+        target[segments.last] = date_property?(segments) ? earliest_date(value) : value
+      end
+
+      # Whether the mapping types the property at `segments` as a date.
+      def date_property?(segments)
+        property = segments.reduce(MAPPING.dig(:mappings, :properties)) do |properties, segment|
+          break nil unless properties.is_a?(Hash) && properties[segment]
+
+          segment == segments.last ? properties[segment] : properties[segment][:properties]
+        end
+
+        property.is_a?(Hash) && property[:type] == 'date'
+      end
+
+      # A fuzzy date's value is an object ({start_date, end_date, ...}), which a
+      # date field refuses. Returns its first day; a plain value is returned
+      # as is.
+      def earliest_date(value)
+        return value unless value.is_a?(Hash)
+
+        value['start_date'] || value[:start_date] || value['end_date'] || value[:end_date]
       end
 
       def related_class(related_record_type)

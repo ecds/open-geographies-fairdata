@@ -17,6 +17,7 @@ module OpenGeographies
       def show
         @record = Instance.search(
           '*',
+          index_name: search_index_name,
           where: { model_type: 'tour', project_id: project_id, slugs: params[:slug] },
           limit: 1,
           load: false,

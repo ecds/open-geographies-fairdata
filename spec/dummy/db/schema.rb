@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_11_184143) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_03_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -417,6 +417,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_184143) do
     t.index ["place_id"], name: "index_og_geonames_hierarchies_on_place_id", unique: true
   end
 
+  create_table "open_geographies_index_rebuild_changes", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "document_id", null: false
+    t.bigint "index_rebuild_id", null: false
+    t.bigint "record_id", null: false
+    t.string "record_type", null: false
+    t.index ["index_rebuild_id"], name: "idx_on_index_rebuild_id_3b2472d6e9"
+  end
+
+  create_table "open_geographies_index_rebuilds", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "index_name", null: false
+    t.bigint "project_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["index_name"], name: "index_open_geographies_index_rebuilds_on_index_name", unique: true
+    t.index ["project_id"], name: "index_open_geographies_index_rebuilds_on_project_id"
+  end
+
   create_table "open_geographies_project_model_roles", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "project_id", null: false
@@ -454,4 +472,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_184143) do
     t.uuid "uuid", default: -> { "gen_random_uuid()" }, null: false
     t.index ["defineable_type", "defineable_id"], name: "index_user_defined_fields_on_defineable"
   end
+
+  add_foreign_key "open_geographies_index_rebuild_changes", "open_geographies_index_rebuilds", column: "index_rebuild_id", on_delete: :cascade
 end

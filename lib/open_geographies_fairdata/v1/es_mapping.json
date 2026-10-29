@@ -11,6 +11,8 @@
 
   "order_comment": "`order` (media, works, people, places, map_layers, stops) is optional. It is the relationship row's own order column, and most relationships are never ordered, so it is nil. #with_relationship_order (searchable.rb) leaves the key out and does not write `order: null`, so a client should check whether the key is present. Items are already returned sorted by it (#related uses `.order(:order)`, and Postgres sorts nulls last, so unordered items come after ordered ones). `order` is included on each item so a client that filters, merges or re-sorts can recover the intended order.",
 
+  "dynamic_comment": "`date_detection` is off, so a text field whose first value looks like a date is not mapped as a date and does not refuse later text values. Explicit `date` properties are unaffected. The `nested_objects_unmapped` template leaves any object below the top level unmapped (`dynamic: false`): a relationship's copy of a related record, a fuzzy date's parts. Those values stay in _source and come back in responses, but cannot be searched, filtered or aggregated. This keeps every relationship from mapping its related record's fields again under its own key. Explicit properties and the top-level templates below are unaffected.",
+
   "settings": {
     "analysis": {
       "analyzer": {
@@ -34,7 +36,15 @@
   },
 
   "mappings": {
+    "date_detection": false,
     "dynamic_templates": [
+      {
+        "nested_objects_unmapped": {
+          "path_match": "*.*",
+          "match_mapping_type": "object",
+          "mapping": { "type": "object", "dynamic": false }
+        }
+      },
       {
         "facets_as_keyword": {
           "match": "*_facet",

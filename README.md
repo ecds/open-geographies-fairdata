@@ -26,24 +26,150 @@ Or install it yourself as:
 $ gem install core_data_connector_open_geographies
 ```
 
-## Running Tests
+## Development
 
-Install/update migrations from CoreDataConnector
+The gem is a Rails engine. Its specs run inside a small Rails app in
+`spec/dummy` against a real Postgres (with PostGIS) and a real
+Elasticsearch, so you need Ruby plus those two services.
+
+### Windows: use WSL
+
+rbenv doesn't run on Windows, and several gems here build against Linux
+libraries. Do everything inside WSL 2 with Ubuntu:
+
+1. In PowerShell as administrator, run `wsl --install -d Ubuntu`, restart,
+   and create a Linux user when Ubuntu first opens.
+2. Install Docker Desktop and, under Settings → Resources → WSL integration,
+   turn it on for Ubuntu.
+3. Clone the repository inside Ubuntu, e.g. under `~/code`, not under
+   `/mnt/c/...`. The Windows drive is slow from WSL and can change line
+   endings.
+
+Run every command below in the Ubuntu terminal. VS Code's WSL extension
+opens the folder from there.
+
+### Ruby
+
+The Ruby version is in `.ruby-version`. Install it with rbenv.
+
+On Ubuntu (including WSL), first the libraries Ruby and the gems compile
+against:
 
 ```bash
-cd spec/dummy && \
-bundle exec rails core_data_connector:install:migrations && \
-bundle exec rails user_defined_fields:install:migrations && \
-bundle exec rails fuzzy_dates:install:migrations && \
-bundle exec rails triple_eye_effable:install:migrations && \
-cd ../..
+sudo apt update
+sudo apt install -y git curl build-essential autoconf libssl-dev libyaml-dev zlib1g-dev libffi-dev libreadline-dev libgmp-dev libpq-dev libcurl4-openssl-dev libgeos-dev
 ```
 
-To run the tests:
+then rbenv and its `ruby-build` plugin:
 
 ```bash
-bundle exec rspec spec/geojson.spec
+git clone https://github.com/rbenv/rbenv.git ~/.rbenv
+git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
+echo 'eval "$(~/.rbenv/bin/rbenv init - bash)"' >> ~/.bashrc
+exec bash
 ```
+
+On macOS, with Homebrew:
+
+```bash
+brew install rbenv ruby-build libpq geos
+echo 'eval "$(rbenv init - zsh)"' >> ~/.zshrc
+exec zsh
+bundle config build.pg --with-pg-config="$(brew --prefix libpq)/bin/pg_config"
+```
+
+Then, from the repository root, install that Ruby (this compiles it and
+takes several minutes) and the gems:
+
+```bash
+rbenv install
+gem install bundler -v 2.6.7
+bundle install
+```
+
+`ruby -v` in the repository should print the version in `.ruby-version`.
+If it doesn't, the `rbenv init` line isn't in your shell's startup file.
+
+### Postgres and Elasticsearch
+
+Start the containers with the project's Docker Compose file:
+
+```bash
+docker compose up -d
+```
+
+The specs expect:
+
+- Postgres with PostGIS on `localhost:5432`, user `postgres`, password
+  `postgres`. Set `DB_HOSTNAME`, `DB_USERNAME`, `DB_PASSWORD` or `DB_NAME`
+  if yours differ (see `spec/dummy/config/database.yml`).
+- Elasticsearch 8 on `localhost:9200` with security off (no password, plain
+  `http`). `curl localhost:9200` should print its version.
+
+Redis is not needed for the specs.
+
+The development and test environments share one database,
+`open_geographies`, and the specs empty it on every run. Don't keep data
+there that you want to keep.
+
+### Running the specs
+
+Create the database once:
+
+```bash
+cd spec/dummy && RAILS_ENV=test bin/rails db:create && cd ../..
+```
+
+Then, from the repository root:
+
+```bash
+RAILS_ENV=test bundle exec rspec
+```
+
+The first run loads `spec/dummy/db/schema.rb` into the database. Run one
+file or one example by path, e.g. `bundle exec rspec
+spec/models/open_geographies/v1/indexes_spec.rb:81`.
+
+Run the specs from the repository root, not from `spec/dummy`: Rails looks
+for pending migrations in `db/migrate` relative to where you run it, and
+the engine's own migrations live in the root's `db/migrate`.
+
+Check style before pushing:
+
+```bash
+bin/rubocop
+```
+
+### Good to know
+
+- **Use `spec/dummy/bin/rails`, not `bin/rails`.** The root `bin/rails`
+  doesn't work. For a console or a one-off script against the test app,
+  either `cd spec/dummy && RAILS_ENV=test bin/rails console`, or from the
+  root:
+
+  ```bash
+  RAILS_ENV=test bundle exec ruby -e 'require "./spec/dummy/config/environment"; puts CoreDataConnector::Project.count'
+  ```
+
+- **"Migrations are pending" after the schema was reloaded.** Loading
+  `schema.rb` only records the migrations Rails can see from where it ran.
+  If rspec then aborts listing the engine's migrations (the files in the
+  root's `db/migrate`) as pending, record them as run; the tables are
+  already in `schema.rb`:
+
+  ```bash
+  RAILS_ENV=test bundle exec ruby -e 'require "./spec/dummy/config/environment"; ctx = ActiveRecord::Base.connection_pool.migration_context; ctx.migrations.each { |m| ctx.schema_migration.create_version(m.version.to_s) unless ctx.get_all_versions.include?(m.version) }'
+  ```
+
+- **`spec/seeds.rb` runs before every suite** and adds 15 places, so
+  don't write specs that assume an empty database or index.
+- **The indexing specs use real Elasticsearch indexes.** They delete what
+  they create. If a run is interrupted, list what's left with
+  `curl 'localhost:9200/_cat/indices/open_geographies_v1*'` and delete
+  each by name with `curl -X DELETE localhost:9200/<name>` (Elasticsearch
+  refuses wildcard deletes).
+- **The test log rotates at 100 MB** to `spec/dummy/log/test.log.0`. Both
+  are ignored by git; delete them whenever you like.
 
 ## v1 API — example documents
 
@@ -51,7 +177,7 @@ Illustrative `search_data` output for the v1 (canonical/OG-compliant) indexer -
 i.e. what a Place or Map Layer document looks like once a project uses the
 exact relationship/UDF names from `canonical_template.json` and picks up the
 `og.promote` shortcuts. Field values below are illustrative (some UUIDs are
-made up), but the *shape* and the concrete numbers that could be pulled from
+made up), but the _shape_ and the concrete numbers that could be pulled from
 real data (the church's coordinates, the map layer's bbox) are real, taken
 from production while building this out. A non-compliant project (e.g. the
 existing HRCGA churches data, which uses names like "Categories" instead of
@@ -81,15 +207,36 @@ actual HRCGA production data has examples of today.
   "visibility": "published",
   "date_modified": "2026-06-01T12:00:00Z",
   "identifiers": [
-    { "authority": "wikidata", "identifier": "https://www.wikidata.org/wiki/Q23556" },
-    { "authority": "geonames", "identifier": "https://www.geonames.org/4180439" },
+    {
+      "authority": "wikidata",
+      "identifier": "https://www.wikidata.org/wiki/Q23556"
+    },
+    {
+      "authority": "geonames",
+      "identifier": "https://www.geonames.org/4180439"
+    },
     { "authority": "viaf", "identifier": "https://viaf.org/viaf/142294851/" }
   ],
   "geo": { "point": { "lat": 33.748997, "lon": -84.387985 } },
   "administrative_area": [
-    { "level": "ADM2", "name": "Fulton County", "geonames_id": "4219762", "geonames_url": "https://www.geonames.org/4219762" },
-    { "level": "ADM1", "name": "Georgia", "geonames_id": "4197000", "geonames_url": "https://www.geonames.org/4197000" },
-    { "level": "PCLI", "name": "United States", "geonames_id": "6252001", "geonames_url": "https://www.geonames.org/6252001" }
+    {
+      "level": "ADM2",
+      "name": "Fulton County",
+      "geonames_id": "4219762",
+      "geonames_url": "https://www.geonames.org/4219762"
+    },
+    {
+      "level": "ADM1",
+      "name": "Georgia",
+      "geonames_id": "4197000",
+      "geonames_url": "https://www.geonames.org/4197000"
+    },
+    {
+      "level": "PCLI",
+      "name": "United States",
+      "geonames_id": "6252001",
+      "geonames_url": "https://www.geonames.org/6252001"
+    }
   ],
 
   "description": "The capital and most populous city of the U.S. state of Georgia, founded in 1837 as the terminus of the Western and Atlantic Railroad.",
@@ -219,7 +366,10 @@ actual HRCGA production data has examples of today.
       "identifiers": [],
       "bbox": {
         "type": "envelope",
-        "coordinates": [[-82.0000001, 30.749996], [-81.87499909, 30.62500399]]
+        "coordinates": [
+          [-82.0000001, 30.749996],
+          [-81.87499909, 30.62500399]
+        ]
       }
     }
   ],
@@ -247,7 +397,7 @@ depth-limited summaries. `identifiers` shows the `sameAs`-style shape built
 by `IDENTIFIER_URL_BUILDERS` - each authority's stored bare code (e.g. a
 GeoNames numeric ID) turned into its canonical public URL.
 
-`administrative_area` is deliberately a *different* thing from
+`administrative_area` is deliberately a _different_ thing from
 `contained_in_place`, even though this example has both pointing at the same
 real-world county. `contained_in_place` requires a curator to have actually
 built a County place record and related it - a real local record with a
@@ -265,7 +415,7 @@ faceting; one that does gets both.
 actually followable rather than just descriptive. v1's routes key on the
 project's parameterized name, not its numeric id (`GET
 /v1/:project/places/:slug`) - a record's own top-level document doesn't need
-this (the client already knows what project it asked for), but a *nested*
+this (the client already knows what project it asked for), but a _nested_
 summary might belong to a completely different project than the record
 containing it. That's exactly the shape a shared, `discoverable` reference
 project (e.g. one atlas-wide "Administrative Districts" project that every
@@ -277,12 +427,12 @@ The `media` array shows both branches of "exactly one of content urls or
 embed URL must be present" from the canonical template's Media model: the
 image is uploaded/IIIF-backed (`preview`/`thumbnail`/`content_url`/
 `manifest_url`, from `V1::MediaContent#extras`), while the video, pano, and
-3D model are externally hosted (`embed_url` only, from *UDF promotion*, not
+3D model are externally hosted (`embed_url` only, from _UDF promotion_, not
 `extras` - "Embed URL" is just a regular UDF on the Media project model that
 happens to promote to a structural field, same mechanism as Map Layers'
 `date`/`bearing`). `media_type`/`caption`/`alt_text`/`duration` are UDF
 promotions too. The nested `media[0]` also shows one more level of expansion
-(its own `creator`) - and that creator is *just* the flat envelope, with no
+(its own `creator`) - and that creator is _just_ the flat envelope, with no
 further relationships, because depth capping stops recursion there.
 
 ### Map Layer
@@ -304,7 +454,10 @@ further relationships, because depth capping stops recursion there.
 
   "bbox": {
     "type": "envelope",
-    "coordinates": [[-82.0000001, 30.749996], [-81.87499909, 30.62500399]]
+    "coordinates": [
+      [-82.0000001, 30.749996],
+      [-81.87499909, 30.62500399]
+    ]
   },
   "date": "1943",
   "bearing": 0,
@@ -366,7 +519,7 @@ geometry (`ST_XMin/XMax/YMin/YMax` over a real topographic-quad record) via
 `V1::MapLayer#extras`, not invented. `date`/`bearing`/`source` come from
 scalar UDF promotion (`"Source Type"` + `"Source URLs"` merge into one
 `source: {type:, urls:}` object via the dotted `og.promote` path). `places`
-is the *inverse* of a Place's `map_layers` relationship - it needs no
+is the _inverse_ of a Place's `map_layers` relationship - it needs no
 map-layer-specific code, since `related_to` already walks
 `allow_inverse: true` relationships generically.
 

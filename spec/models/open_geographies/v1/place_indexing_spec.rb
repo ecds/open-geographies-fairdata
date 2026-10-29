@@ -46,8 +46,11 @@ RSpec.describe('V1 Place Elasticsearch indexing') do
     place = create(:place, project_model: place_model, name: 'Putnam County')
     factory = RGeo::Geographic.spherical_factory(srid: 4326)
     square = factory.polygon(factory.linear_ring([
-      factory.point(-83.6, 32.4), factory.point(-83.4, 32.4), factory.point(-83.4, 32.6),
-      factory.point(-83.6, 32.6), factory.point(-83.6, 32.4),
+      factory.point(-83.6, 32.4),
+      factory.point(-83.4, 32.4),
+      factory.point(-83.4, 32.6),
+      factory.point(-83.6, 32.6),
+      factory.point(-83.6, 32.4),
     ]))
     create(:place_geometry, place:, geometry: square)
 

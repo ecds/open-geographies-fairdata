@@ -224,9 +224,9 @@ module OpenGeographies
 
         ::CoreDataConnector::PlaceGeometry.connection.select_one(
           ::CoreDataConnector::PlaceGeometry.sanitize_sql_array([
-            "SELECT ST_NPoints(shape) AS points, ST_AsGeoJSON(shape, 6) AS geojson " \
+            'SELECT ST_NPoints(shape) AS points, ST_AsGeoJSON(shape, 6) AS geojson ' \
               "FROM (SELECT #{shape_sql} AS shape FROM core_data_connector_place_geometries WHERE id = ?) shapes " \
-              "WHERE NOT ST_IsEmpty(shape)",
+              'WHERE NOT ST_IsEmpty(shape)',
             place_geometry.id,
           ]),
         )

@@ -54,7 +54,10 @@ namespace :og_pmtiles do
         exit
       end
     end
-    opt_parser.order!(ARGV.drop(1))
+    # Options follow `--`. `rake` leaves the task name in ARGV before it and
+    # `bin/rails` does not, so only what comes after `--` is parsed.
+    separator = ARGV.index('--')
+    opt_parser.parse!(separator ? ARGV[(separator + 1)..] : [])
 
     options[:s3_key] ||= "#{options[:project].parameterize}.pmtiles"
 

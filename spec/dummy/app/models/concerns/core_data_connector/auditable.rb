@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Auditable
     extend ActiveSupport::Concern
@@ -11,7 +9,7 @@ module CoreDataConnector
           meta: {
             roots: ->(record) { record.audit_roots_data },
             project_id: ->(record) { record.audit_roots.first&.project_id },
-            meta: ->(record) { record.audit_metadata },
+            meta: ->(record) { record.audit_metadata }
           },
           **options,
           ignore: [
@@ -31,11 +29,11 @@ module CoreDataConnector
             :z_relationship_id,
             :z_taxonomy_id,
             :z_web_identifier_id,
-            :z_work_id,
+            :z_work_id
           ].concat(options[:ignore] || []),
         )
 
-        after_commit(:backfill_audit_roots_data, on: :create)
+        after_commit :backfill_audit_roots_data, on: :create
 
         if roots
           define_method(:audit_roots) { Array(roots.call(self)).compact }
@@ -63,7 +61,7 @@ module CoreDataConnector
           id: record.id,
           display_name: record.display_name,
           uuid: record.uuid,
-          project_model_id: record.project_model_id,
+          project_model_id: record.project_model_id
         }
       end
     end

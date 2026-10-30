@@ -1,6 +1,17 @@
 inherit_gem:
   rubocop-shopify: rubocop.yml
 
+# Adds to the inherited Exclude list instead of replacing it.
+inherit_mode:
+  merge:
+    - Exclude
+
+AllCops:
+  Exclude:
+    # Copied from FairData's core-data-cloud by bin/sync_core_data_connector
+    # and replaced on each sync, so this project's style is not enforced there.
+    - 'spec/dummy/**/*'
+
 Metrics/AbcSize:
   Max: 20
 

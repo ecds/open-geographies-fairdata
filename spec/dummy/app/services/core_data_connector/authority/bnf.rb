@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Authority
     class Bnf < Base
@@ -13,13 +11,13 @@ module CoreDataConnector
         operation: 'searchRetrieve',
         startRecord: 1,
         recordSchema: 'dublincore',
-        version: 1.2,
+        version: 1.2
       }
 
       def find(id, options = {})
         params = {
           query: "bib.ark+all+\"#{id}\"",
-          maximumRecords: options[:limit] || DEFAULT_LIMIT,
+          maximumRecords: options[:limit] || DEFAULT_LIMIT
         }.merge(BASE_PARAMS)
 
         send_request(BASE_URL, params: params) do |body|
@@ -30,7 +28,7 @@ module CoreDataConnector
       def search(query, options = {})
         params = {
           query: "bib.anywhere+all+\"#{query}\"",
-          maximumRecords: options[:limit] || DEFAULT_LIMIT,
+          maximumRecords: options[:limit] || DEFAULT_LIMIT
         }.merge(BASE_PARAMS)
 
         send_request(BASE_URL, params: params) do |body|

@@ -1,8 +1,6 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class WebAuthority < ApplicationRecord
-    SOURCE_TYPES = ['atom', 'bnf', 'dpla', 'geonames', 'jisc', 'viaf', 'wikidata']
+    SOURCE_TYPES = %w(atom bnf dpla geonames jisc viaf wikidata)
 
     # Relationships
     belongs_to :project

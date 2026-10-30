@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Ownable
     extend ActiveSupport::Concern
@@ -41,10 +39,10 @@ module CoreDataConnector
         where(
           ProjectModelShare
             .joins(project_model_access: :project_model)
-            .where(ProjectModelAccess.arel_table[:project_model_id].eq(arel_table[:project_model_id]))
+            .where(ProjectModelAccess.arel_table[:project_model_id].eq(self.arel_table[:project_model_id]))
             .where(core_data_connector_project_models: { project_id: project_id })
             .arel
-            .exists,
+            .exists
         )
       end
 
@@ -53,10 +51,10 @@ module CoreDataConnector
         where(
           ProjectModelShare
             .joins(:project_model_access)
-            .where(ProjectModelAccess.arel_table[:project_model_id].eq(arel_table[:project_model_id]))
+            .where(ProjectModelAccess.arel_table[:project_model_id].eq(self.arel_table[:project_model_id]))
             .where(project_model_id: project_model_id)
             .arel
-            .exists,
+            .exists
         )
       end
     end

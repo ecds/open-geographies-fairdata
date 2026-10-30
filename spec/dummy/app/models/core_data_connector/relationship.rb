@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class Relationship < ApplicationRecord
     # Includes
@@ -8,7 +6,7 @@ module CoreDataConnector
     include UserDefinedFields::Fieldable
 
     track_changes roots: ->(relationship) { [relationship.primary_record, relationship.related_record] },
-      only: [:user_defined]
+                  only: [:user_defined]
 
     # Relationships
     belongs_to :project_model_relationship
@@ -44,28 +42,28 @@ module CoreDataConnector
     delegate :project_id, to: :project_model_relationship
 
     # User defined fields parent
-    resolve_defineable ->(relationship) { relationship.project_model_relationship }
+    resolve_defineable -> (relationship) { relationship.project_model_relationship }
 
     def self.all_records_by_project(project_id)
       primary_query = Relationship
-        .where(
-          ProjectModelRelationship
-            .joins(:primary_model)
-            .where(ProjectModelRelationship.arel_table[:id].eq(Relationship.arel_table[:project_model_relationship_id]))
-            .where(primary_model: { project_id: project_id })
-            .arel
-            .exists,
-        )
+                        .where(
+                          ProjectModelRelationship
+                            .joins(:primary_model)
+                            .where(ProjectModelRelationship.arel_table[:id].eq(Relationship.arel_table[:project_model_relationship_id]))
+                            .where(primary_model: { project_id: project_id })
+                            .arel
+                            .exists
+                        )
 
       related_query = Relationship
-        .where(
-          ProjectModelRelationship
-            .joins(:related_model)
-            .where(ProjectModelRelationship.arel_table[:id].eq(Relationship.arel_table[:project_model_relationship_id]))
-            .where(related_model: { project_id: project_id })
-            .arel
-            .exists,
-        )
+                        .where(
+                          ProjectModelRelationship
+                            .joins(:related_model)
+                            .where(ProjectModelRelationship.arel_table[:id].eq(Relationship.arel_table[:project_model_relationship_id]))
+                            .where(related_model: { project_id: project_id })
+                            .arel
+                            .exists
+                        )
 
       primary_query.or(related_query)
     end

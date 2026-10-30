@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Authority
     class Wikidata < Base
@@ -31,7 +29,7 @@ module CoreDataConnector
           limit: options[:limit] || DEFAULT_LIMIT,
           search: query,
           type: 'item',
-          uselang: 'en',
+          uselang: 'en'
         }
 
         send_request(BASE_URL, method: :get, params: params) do |body|

@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class Item < ApplicationRecord
     # Includes
@@ -29,6 +27,6 @@ module CoreDataConnector
     delegate :name, to: :primary_name, allow_nil: true
 
     # User defined fields parent
-    resolve_defineable ->(item) { item.project_model }
+    resolve_defineable -> (item) { item.project_model }
   end
 end

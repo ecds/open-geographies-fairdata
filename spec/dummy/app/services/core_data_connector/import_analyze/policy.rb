@@ -1,8 +1,7 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module ImportAnalyze
     class Policy
+
       attr_reader :current_user, :files
 
       def initialize(current_user, files)
@@ -16,16 +15,16 @@ module CoreDataConnector
         return true if current_user.admin?
 
         project_model_ids = files
-          &.except(Import::FILE_RELATIONSHIPS)
-          &.values
-          &.map { |v| v[:data]&.map { |d| d[:import][:project_model_id] } }
-          &.flatten
-          &.uniq
+                              &.except(Import::FILE_RELATIONSHIPS)
+                              &.values
+                              &.map{ |v| v[:data]&.map{ |d| d[:import][:project_model_id] } }
+                              &.flatten
+                              &.uniq
 
         project_model_relationship_ids = (files.dig(Import::FILE_RELATIONSHIPS, :data) || [])
-          &.map { |v| v[:import][:project_model_relationship_id] }
-          &.flatten
-          &.uniq
+                                           &.map{ |v| v[:import][:project_model_relationship_id] }
+                                           &.flatten
+                                           &.uniq
 
         has_access?(project_model_ids, project_model_relationship_ids)
       end
@@ -36,15 +35,15 @@ module CoreDataConnector
         return true if current_user.admin?
 
         project_model_ids = files
-          &.except(Import::FILE_RELATIONSHIPS)
-          &.values
-          &.map { |v| v['data']&.map { |d| d['project_model_id'] } }
-          &.flatten
-          &.uniq
+                              &.except(Import::FILE_RELATIONSHIPS)
+                              &.values
+                              &.map{ |v| v['data']&.map{ |d| d['project_model_id'] } }
+                              &.flatten
+                              &.uniq
 
         project_model_relationship_ids = (files.dig(Import::FILE_RELATIONSHIPS, :data) || [])
-          &.map { |v| v['project_model_relationship_id'] }
-          &.uniq
+                                           &.map{ |v| v['project_model_relationship_id'] }
+                                           &.uniq
 
         has_access?(project_model_ids, project_model_relationship_ids)
       end
@@ -61,7 +60,7 @@ module CoreDataConnector
 
         # Return false if the relationship data being imported belongs to a model for which the user does not have access
         allowed_project_model_relationship_ids = project_model_relationships_query.pluck(:id)
-        return false unless project_model_relationship_ids.all? { |id| allowed_project_model_relationship_ids.include?(id) }
+        return false unless project_model_relationship_ids.all?{ |id| allowed_project_model_relationship_ids.include?(id) }
 
         # Return true
         true
@@ -76,7 +75,7 @@ module CoreDataConnector
               .where(user_projects: { user_id: current_user.id })
               .where.not(archived: true)
               .arel
-              .exists,
+              .exists
           )
       end
 
@@ -87,12 +86,11 @@ module CoreDataConnector
               .joins(project: :user_projects)
               .where(
                 ProjectModel.arel_table[:id].eq(ProjectModelRelationship.arel_table[:primary_model_id])
-                            .or(ProjectModel.arel_table[:id].eq(ProjectModelRelationship.arel_table[:related_model_id])),
-              )
+                            .or(ProjectModel.arel_table[:id].eq(ProjectModelRelationship.arel_table[:related_model_id])))
               .where(user_projects: { user_id: current_user.id })
               .where.not(project: { archived: true })
               .arel
-              .exists,
+              .exists
           )
       end
     end

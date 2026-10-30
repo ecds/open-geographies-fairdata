@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   class Person < ApplicationRecord
     # Includes
@@ -34,7 +36,7 @@ module CoreDataConnector
     end
 
     # User defined fields parent
-    resolve_defineable -> (person) { person.project_model }
+    resolve_defineable ->(person) { person.project_model }
 
     def full_name
       [first_name, middle_name, last_name].compact.join(' ')

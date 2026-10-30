@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   class PlaceName < ApplicationRecord
     self.primary_key = :id

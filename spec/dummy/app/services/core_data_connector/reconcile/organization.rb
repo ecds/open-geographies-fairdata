@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Reconcile
     module Organization
@@ -21,7 +23,6 @@ module CoreDataConnector
           organization_names.map(&:name)
         end
       end
-
     end
   end
 end

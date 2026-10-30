@@ -1,16 +1,17 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Reconcile
     module Base
       extend ActiveSupport::Concern
 
       class_methods do
-
         def apply_reconcile_preloads(records)
           # Preload any associations from the concrete class
-          if self.respond_to?(:preloads) && preloads.present?
+          if respond_to?(:preloads) && preloads.present?
             Preloader.new(
               records: records,
-              associations: preloads
+              associations: preloads,
             ).call
           end
         end
@@ -20,11 +21,11 @@ module CoreDataConnector
           query = all_records_by_project(project_id)
 
           # Concrete class query
-          query = search_query(query) if self.respond_to?(:search_query)
+          query = search_query(query) if respond_to?(:search_query)
 
           query.find_in_batches(batch_size: 1000) do |records|
             # Apply the preloads for the current batch
-            apply_reconcile_preloads records
+            apply_reconcile_preloads(records)
 
             # Call the block for the current batch
             block.call(records)
@@ -35,13 +36,12 @@ module CoreDataConnector
           name, options = attrs
 
           @reconcile_attrs ||= []
-          @reconcile_attrs << { name: name, block: block}.merge(options || {})
+          @reconcile_attrs << { name: name, block: block }.merge(options || {})
         end
 
         def reconcile_attributes
           @reconcile_attrs
         end
-
       end
 
       included do
@@ -60,10 +60,10 @@ module CoreDataConnector
             name = attr[:name]
 
             # Extract the value for the attribute
-            if attr[:block].present?
-              value = instance_exec &attr[:block]
+            value = if attr[:block].present?
+              instance_exec(&attr[:block])
             else
-              value = self.send(attr[:name])
+              send(attr[:name])
             end
 
             # Skip the property of the value is empty
@@ -76,7 +76,6 @@ module CoreDataConnector
           hash
         end
       end
-
     end
   end
 end

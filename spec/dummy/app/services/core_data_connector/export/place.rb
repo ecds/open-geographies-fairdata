@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Export
     module Place
@@ -5,7 +7,7 @@ module CoreDataConnector
 
       class_methods do
         def export_query
-          self.all.with_centroid
+          all.with_centroid
         end
 
         def export_preloads

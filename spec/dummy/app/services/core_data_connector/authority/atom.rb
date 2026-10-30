@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Authority
     class Atom < Base
@@ -23,7 +21,7 @@ module CoreDataConnector
 
       def find(id, options = {})
         headers = {
-          'REST-API-Key': options[:api_key],
+          'REST-API-Key': options[:api_key]
         }
 
         send_request("#{options[:url]}/api/informationobjects/#{id}", headers: headers) do |body|
@@ -33,11 +31,11 @@ module CoreDataConnector
 
       def search(query, options = {})
         params = {
-          sq0: query,
+          sq0: query
         }
 
         headers = {
-          'REST-API-Key': options[:api_key],
+          'REST-API-Key': options[:api_key]
         }
 
         send_request("#{options[:url]}/api/informationobjects", headers: headers, params: params) do |body|

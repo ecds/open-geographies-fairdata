@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Authority
     class Viaf < Base
@@ -10,7 +8,7 @@ module CoreDataConnector
 
       def find(id, options = {})
         headers = {
-          'Accept': 'application/json',
+          'Accept': 'application/json'
         }
 
         send_request("#{BASE_URL}/viaf/#{id}", method: :get, headers:) do |body|
@@ -20,11 +18,11 @@ module CoreDataConnector
 
       def search(query, options = {})
         headers = {
-          'Accept': 'application/json',
+          'Accept': 'application/json'
         }
 
         params = {
-          query: query,
+          query: query
         }
 
         send_request("#{BASE_URL}/viaf/AutoSuggest", method: :get, headers:, params:) do |body|

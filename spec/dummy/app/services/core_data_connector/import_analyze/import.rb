@@ -1,10 +1,9 @@
-# frozen_string_literal: true
-
 require 'csv'
 
 module CoreDataConnector
   module ImportAnalyze
     class Import
+
       FILE_RELATIONSHIPS = 'relationships.csv'
       FILE_WEB_IDENTIFIERS = 'web_identifiers.csv'
 
@@ -25,7 +24,7 @@ module CoreDataConnector
           user_defined_fields_uuids = user_defined_columns.map { |c| Helper.column_name_to_uuid(c) }
 
           user_defined_fields = UserDefinedFields::UserDefinedField
-            .where(uuid: user_defined_fields_uuids)
+                                  .where(uuid: user_defined_fields_uuids)
 
           attributes = build_attributes(klass, user_defined_fields)
           uuids = find_record_uuids(filepath)
@@ -48,7 +47,7 @@ module CoreDataConnector
               import: row_hash,
               db: db,
               merged: merged,
-              result: db || row_hash,
+              result: db || row_hash
             }
 
             # If the current record has been merged and removed, add a row for the record existing in the database. The
@@ -60,14 +59,14 @@ module CoreDataConnector
               # record to the file. Other duplicates will be listed in the "merged" attribute.
               existing = data[filename][:data].select { |r| r[:merged]&.include?(row_hash[:uuid]) }
 
-              unless existing.present?
+              if !existing.present?
                 merge_row_hash = record_to_csv(merge_record, user_defined_fields)
 
                 data[filename][:data] << {
                   import: merge_row_hash,
                   db: merge_row_hash,
                   merged: merge_record.record_merges.map { |rm| rm.merged_uuid },
-                  result: merge_row_hash,
+                  result: merge_row_hash
                 }
               end
             end
@@ -107,6 +106,7 @@ module CoreDataConnector
             # Delete the duplicate rows
             duplicates.each { |d| rows.delete(d) }
           end
+
         end
 
         # De-duplicate relationships
@@ -115,15 +115,15 @@ module CoreDataConnector
 
           # Find relationship rows where all fields match the current row except the index
           relationship = row[:import].except(:uuid)
-          duplicates = relationship_data.select.with_index { |r, j| i != j && r[:import].except(:uuid) == relationship }
+          duplicates = relationship_data.select.with_index { |r, j|  i != j && r[:import].except(:uuid) == relationship }
 
           # Keep row with an existing record in the database, or the first. Mark all other for delete.
           all = [row, *duplicates]
-          keep = all.select { |r| r[:db].present? }&.first
+          keep = all.select{ |r| r[:db].present? }&.first
           keep = all.first unless keep.present?
 
           keep[:keep] = true
-          (all - [keep]).each { |r| r[:keep] = false }
+          (all - [keep]).each{ |r| r[:keep] = false }
         end
 
         # Remove any rows not marked with "keep"
@@ -133,7 +133,7 @@ module CoreDataConnector
       end
 
       def create_zip(files)
-        return unless files.present?
+        return nil unless files.present?
 
         # Create the temporary directory
         directory = FileSystem.create_directory
@@ -190,7 +190,7 @@ module CoreDataConnector
         if klass.ancestors.include?(Mergeable)
           Preloader.new(
             records: records,
-            associations: [:record_merges],
+            associations: [:record_merges]
           ).call
         end
 
@@ -198,7 +198,7 @@ module CoreDataConnector
         if klass.respond_to?(:export_preloads) && klass.export_preloads.present?
           Preloader.new(
             records: records,
-            associations: klass.export_preloads,
+            associations: klass.export_preloads
           ).call
         end
       end
@@ -209,7 +209,7 @@ module CoreDataConnector
         klass.export_attributes.each do |attribute|
           attributes << {
             name: attribute[:name],
-            label: translate(klass, attribute),
+            label: translate(klass, attribute)
           }
         end
 
@@ -219,7 +219,7 @@ module CoreDataConnector
           attributes << {
             name: Helper.uuid_to_column_name(user_defined_field.uuid),
             label: user_defined_field.column_name,
-            field: serializer.render_show(user_defined_field),
+            field: serializer.render_show(user_defined_field)
           }
         end
 
@@ -227,7 +227,7 @@ module CoreDataConnector
       end
 
       def find_class(filename)
-        "CoreDataConnector::#{File.basename(filename, ".csv").singularize.capitalize}".classify.constantize
+        "CoreDataConnector::#{File.basename(filename, '.csv').singularize.capitalize}".classify.constantize
       end
 
       def find_record_uuids(filepath)
@@ -254,11 +254,11 @@ module CoreDataConnector
             .where(mergeable_type: klass.to_s)
             .where(merged_uuid: uuids)
             .arel
-            .exists,
+            .exists
         )
 
         query.find_in_batches(batch_size: 1000) do |records|
-          apply_preloads(klass, records)
+          apply_preloads klass, records
 
           records.each do |record|
             record.record_merges.each do |record_merge|
@@ -278,7 +278,7 @@ module CoreDataConnector
         query = query.where(uuid: uuids)
 
         query.find_in_batches(batch_size: 1000) do |records|
-          apply_preloads(klass, records)
+          apply_preloads klass, records
 
           records.each do |record|
             records_by_uuid[record.uuid] = record
@@ -307,7 +307,7 @@ module CoreDataConnector
           # here in order to do proper comparison on the client.
           if (user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:select] &&
             user_defined_field.allow_multiple?) ||
-              user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:fuzzy_date]
+            user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:fuzzy_date]
             csv[key] = JSON.parse(value)
           end
         end
@@ -323,11 +323,11 @@ module CoreDataConnector
           next unless csv[key].present?
 
           if user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:boolean] ||
-              user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:number] ||
-              user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:string]
+            user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:number] ||
+            user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:string]
             csv[key] = csv[key].to_s
           elsif user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:select] &&
-              user_defined_field.allow_multiple?
+            user_defined_field.allow_multiple?
             csv[key] = JSON.parse(csv[key])
           elsif user_defined_field.data_type == UserDefinedFields::UserDefinedField::DATA_TYPES[:fuzzy_date]
             csv[key] = JSON.parse(csv[key])
@@ -345,7 +345,7 @@ module CoreDataConnector
       end
 
       def update_relationships(relationship_data, attribute, find_uuid, new_uuid)
-        relationships = relationship_data.select { |r| r[:import][attribute] == find_uuid }
+        relationships = relationship_data.select{ |r| r[:import][attribute] == find_uuid }
 
         relationships.each do |relationship|
           # Create the new relationships row
@@ -357,7 +357,7 @@ module CoreDataConnector
             import: new_relationship,
             db: relationship[:db],
             merged: relationship[:merged],
-            result: relationship[:db] || new_relationship,
+            result: relationship[:db] || new_relationship
           }
 
           # Delete the existing relationship

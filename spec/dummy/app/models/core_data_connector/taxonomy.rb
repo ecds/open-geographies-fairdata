@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class Taxonomy < ApplicationRecord
     # Includes
@@ -21,6 +19,6 @@ module CoreDataConnector
     track_changes
 
     # User defined fields parent
-    resolve_defineable ->(taxonomy) { taxonomy.project_model }
+    resolve_defineable -> (taxonomy) { taxonomy.project_model }
   end
 end

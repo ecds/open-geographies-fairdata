@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 require 'typhoeus'
 
 module CoreDataConnector
@@ -18,11 +16,11 @@ module CoreDataConnector
           if response.success?
             yield response.body
           elsif response.timed_out?
-            render_errors(I18n.t('errors.http.timeout'))
+            render_errors I18n.t('errors.http.timeout')
           elsif response.code == CODE_NO_RESPONSE
-            render_errors(I18n.t('errors.http.no_response'))
+            render_errors I18n.t('errors.http.no_response')
           else
-            render_errors(I18n.t('errors.http.general'))
+            render_errors I18n.t('errors.http.general')
           end
         end
 

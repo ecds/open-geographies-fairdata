@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class PlaceGeometry < ApplicationRecord
     # Includes
@@ -9,8 +7,8 @@ module CoreDataConnector
     # every geometry update destroys the existing place_geometry record
     # and creates a new one, so that event should appear in the log.
     track_changes root: ->(place_geometry) { place_geometry.place },
-      ignore: [:place_id],
-      skip: [:geometry]
+                  ignore: [:place_id],
+                  skip: [:geometry]
 
     # Relationships
     belongs_to :place
@@ -23,16 +21,16 @@ module CoreDataConnector
 
     # Returns the "geometry" as GeoJSON
     def to_geojson
-      Geometry.to_geojson(geometry)
+      Geometry.to_geojson(self.geometry)
     end
 
     private
 
     # Sets the geometry attribute if the geometry_json attribute is provided.
     def set_geometry
-      return unless geometry_json.present?
+      return unless self.geometry_json.present?
 
-      json = JSON.parse(geometry_json)
+      json = JSON.parse(self.geometry_json)
       self.geometry = Geometry.to_postgis(json)
     end
   end

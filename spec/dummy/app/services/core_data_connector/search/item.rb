@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Search
     module Item
@@ -23,6 +21,7 @@ module CoreDataConnector
           source_names.map(&:name)
         end
       end
+
     end
   end
 end

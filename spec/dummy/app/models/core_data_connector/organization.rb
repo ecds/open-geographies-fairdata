@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class Organization < ApplicationRecord
     # Includes
@@ -28,6 +26,6 @@ module CoreDataConnector
     name_table :organization_names
 
     # User defined fields parent
-    resolve_defineable ->(organization) { organization.project_model }
+    resolve_defineable -> (organization) { organization.project_model }
   end
 end

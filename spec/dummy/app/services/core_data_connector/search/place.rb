@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Search
     module Place
@@ -11,7 +9,7 @@ module CoreDataConnector
         end
 
         def search_query(query)
-          query.merge(with_search_geometry)
+          query.merge(self.with_search_geometry)
         end
       end
 
@@ -27,9 +25,9 @@ module CoreDataConnector
         end
 
         search_attribute(:geometry) do |options|
-          if options[:polygons] && respond_to?(:simplified_geometry) && simplified_geometry.present?
-            Geometry.to_geojson(simplified_geometry)
-          elsif respond_to?(:geometry_center) && geometry_center.present?
+          if options[:polygons] && self.respond_to?(:simplified_geometry) && simplified_geometry.present?
+            Geometry.to_geojson(self.simplified_geometry)
+          elsif self.respond_to?(:geometry_center) && geometry_center.present?
             Geometry.to_geojson(geometry_center)
           end
         end
@@ -40,7 +38,7 @@ module CoreDataConnector
 
         search_attribute(:coordinates) do
           # Return if the "geometry_center" attribute is not defined
-          next unless respond_to?(:geometry_center) && geometry_center.present?
+          next unless self.respond_to?(:geometry_center) && geometry_center.present?
 
           [geometry_center.y, geometry_center.x]
         end

@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class ProjectModelAccess < ApplicationRecord
     # Relationships

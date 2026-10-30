@@ -1,8 +1,7 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module ImportAnalyze
     class Helper
+
       PREFIX_USER_DEFINED = 'udf_'
 
       PRELOADS = [
@@ -20,11 +19,11 @@ module CoreDataConnector
       end
 
       def self.user_defined_columns(filepath)
-        CSV.foreach(filepath).first.select { |h| is_user_defined_column?(h) }
+        CSV.foreach(filepath).first.select{ |h| is_user_defined_column?(h) }
       end
 
       def self.uuid_to_column_name(uuid)
-        "#{PREFIX_USER_DEFINED}#{uuid.gsub("-", "_")}"
+        "#{PREFIX_USER_DEFINED}#{uuid.gsub('-', '_')}"
       end
 
       def analyze(zip, user)
@@ -59,15 +58,15 @@ module CoreDataConnector
 
         # Create the background job
         filenames = files
-          .keys
-          .filter_map { |filename| filename if files[filename][:remove_duplicates].to_s.to_bool }
-          .compact
+                      .keys
+                      .filter_map { |filename| filename if files[filename][:remove_duplicates].to_s.to_bool }
+                      .compact
 
         extra = { filenames: }
 
         file = {
           io: File.open(zip_filepath),
-          filename: File.basename(zip_filepath),
+          filename: File.basename(zip_filepath)
         }
 
         job = Job.create(
@@ -75,7 +74,7 @@ module CoreDataConnector
           file:,
           job_type: Job::JOB_TYPE_IMPORT,
           project_id:,
-          user:,
+          user:
         )
 
         # Remove the ZIP file directory

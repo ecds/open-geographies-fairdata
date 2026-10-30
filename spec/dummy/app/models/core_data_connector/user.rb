@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class User < ApplicationRecord
     # Roles
@@ -10,7 +8,7 @@ module CoreDataConnector
     ALLOWED_ROLES = [
       ROLE_ADMIN,
       ROLE_MEMBER,
-      ROLE_GUEST,
+      ROLE_GUEST
     ]
 
     # Relationships
@@ -29,11 +27,11 @@ module CoreDataConnector
     # Validations
     validates :email, uniqueness: true
     validates :password,
-      allow_nil: true,
-      length: { in: 8..128 },
-      format: { with: Users::Passwords::PASSWORD_FORMAT },
-      unless: :password_temporary
-    validates :role, inclusion: { in: ALLOWED_ROLES, message: I18n.t('errors.users.roles') }
+              allow_nil: true,
+              length: { in: 8..128 },
+              format: { with: Users::Passwords::PASSWORD_FORMAT },
+              unless: :password_temporary
+    validates :role, inclusion:  { in: ALLOWED_ROLES, message: I18n.t('errors.users.roles') }
 
     def admin?
       role === ROLE_ADMIN
@@ -57,20 +55,19 @@ module CoreDataConnector
     end
 
     def split_name
-      name&.split(' ', 2)
+      self.name&.split(' ', 2)
     end
 
     private
 
     def set_temp_password
       return if password.present?
-
       temp = Users::Passwords.generate_user_password
-      assign_attributes(
+      self.assign_attributes(
         password: temp,
         password_confirmation: temp,
         password_temporary: true,
-        require_password_change: true,
+        require_password_change: true
       )
     end
 

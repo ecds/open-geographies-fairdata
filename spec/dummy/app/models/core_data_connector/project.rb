@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   class Project < ApplicationRecord
     # Relationships
@@ -6,7 +8,7 @@ module CoreDataConnector
     has_many :web_authorities, dependent: :destroy
 
     def storage_key
-      return nil unless use_storage_key?
+      return unless use_storage_key?
 
       uuid
     end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Search
     module Base
@@ -9,15 +11,15 @@ module CoreDataConnector
           Preloader.new(
             records: records,
             associations: [
-              project_model: [:project, :user_defined_fields]
-            ]
+              project_model: [:project, :user_defined_fields],
+            ],
           ).call
 
           # Preload any associations from the concrete class
-          if self.respond_to?(:preloads) && preloads.present?
+          if respond_to?(:preloads) && preloads.present?
             Preloader.new(
               records: records,
-              associations: preloads
+              associations: preloads,
             ).call
           end
 
@@ -27,78 +29,76 @@ module CoreDataConnector
             associations: [
               event_relationships: [
                 related_record: [
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
               ],
               instance_relationships: [
                 related_record: [
                   :primary_name,
                   :source_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
               ],
               item_relationships: [
                 related_record: [
                   :primary_name,
                   :source_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
               ],
               media_content_relationships: [
                 related_record: [
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
               ],
               organization_relationships: [
                 related_record: [
                   :primary_name,
                   :organization_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
               ],
               person_relationships: [
                 related_record: [
                   :primary_name,
                   :person_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
               ],
               place_relationships: [
                 related_place_with_search_geometry: [
                   :place_geometry,
                   :primary_name,
                   :place_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
               ],
               taxonomy_relationships: [
                 related_record: [
                   :name,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
               ],
               work_relationships: [
                 related_record: [
                   :primary_name,
                   :source_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, primary_model: :project]
-              ]
+                project_model_relationship: [:user_defined_fields, primary_model: :project],
+              ],
             ],
-            scope: (
-              Relationship
+            scope: Relationship
                 .joins(:project_model_relationship)
-                .where(core_data_connector_project_model_relationships: { primary_model_id: project_model_ids })
-            )
+                .where(core_data_connector_project_model_relationships: { primary_model_id: project_model_ids }),
           ).call
 
           # Preload related relationships
@@ -107,78 +107,76 @@ module CoreDataConnector
             associations: [
               event_related_relationships: [
                 primary_record: [
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
               instance_related_relationships: [
                 primary_record: [
                   :primary_name,
                   :source_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
               item_related_relationships: [
                 primary_record: [
                   :primary_name,
                   :source_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
               media_content_related_relationships: [
                 primary_record: [
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
               organization_related_relationships: [
                 primary_record: [
                   :primary_name,
                   :organization_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
               person_related_relationships: [
                 primary_record: [
                   :primary_name,
                   :person_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
               place_related_relationships: [
                 inverse_related_place_with_search_geometry: [
                   :place_geometry,
                   :primary_name,
                   :place_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
               taxonomy_related_relationships: [
                 primary_record: [
                   :name,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
               work_related_relationships: [
                 primary_record: [
                   :primary_name,
                   :source_names,
-                  project_model: :user_defined_fields
+                  project_model: :user_defined_fields,
                 ],
-                project_model_relationship: [:user_defined_fields, related_model: :project]
+                project_model_relationship: [:user_defined_fields, related_model: :project],
               ],
             ],
-            scope: (
-              Relationship
+            scope: Relationship
                 .joins(:project_model_relationship)
-                .where(core_data_connector_project_model_relationships: { related_model_id: project_model_ids })
-            )
+                .where(core_data_connector_project_model_relationships: { related_model_id: project_model_ids }),
           ).call
         end
 
@@ -190,11 +188,11 @@ module CoreDataConnector
           query = query.published if ancestors.include?(Publishable)
 
           # Concrete class query
-          query = search_query(query) if self.respond_to?(:search_query)
+          query = search_query(query) if respond_to?(:search_query)
 
           query.find_in_batches(batch_size: 1000) do |records|
             # Apply the preloads for the current batch
-            apply_preloads records, project_model_ids
+            apply_preloads(records, project_model_ids)
 
             # Call the block for the current batch
             block.call(records)
@@ -205,7 +203,7 @@ module CoreDataConnector
           name, options = attrs
 
           @attrs ||= []
-          @attrs << { name: name, block: block}.merge(options || {})
+          @attrs << { name: name, block: block }.merge(options || {})
         end
 
         def search_attributes
@@ -218,132 +216,186 @@ module CoreDataConnector
         include UserDefinedFields::Converter
 
         # Primary relationships
-        has_many :event_relationships, -> {
-          joins(:related_event)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Event.to_s })
-            .where(CoreDataConnector::Event.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :event_relationships,
+          -> {
+            joins(:related_event)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Event.to_s })
+              .where(CoreDataConnector::Event.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
-        has_many :instance_relationships, -> {
-          joins(:related_instance)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Instance.to_s })
-            .where(CoreDataConnector::Instance.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :instance_relationships,
+          -> {
+            joins(:related_instance)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Instance.to_s })
+              .where(CoreDataConnector::Instance.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
-        has_many :item_relationships, -> {
-          joins(:related_item)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Item.to_s })
-            .where(CoreDataConnector::Item.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :item_relationships,
+          -> {
+            joins(:related_item)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Item.to_s })
+              .where(CoreDataConnector::Item.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
-        has_many :media_content_relationships, -> {
-          joins(:related_media_content)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::MediaContent.to_s })
-            .where(CoreDataConnector::MediaContent.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :media_content_relationships,
+          -> {
+            joins(:related_media_content)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::MediaContent.to_s })
+              .where(CoreDataConnector::MediaContent.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
-        has_many :organization_relationships, -> {
-          joins(:related_organization)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Organization.to_s })
-            .where(CoreDataConnector::Organization.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :organization_relationships,
+          -> {
+            joins(:related_organization)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Organization.to_s })
+              .where(CoreDataConnector::Organization.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
-        has_many :person_relationships, -> {
-          joins(:related_person)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Person.to_s })
-            .where(CoreDataConnector::Person.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :person_relationships,
+          -> {
+            joins(:related_person)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Person.to_s })
+              .where(CoreDataConnector::Person.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
-        has_many :place_relationships, -> {
-          joins(:related_place)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Place.to_s })
-            .where(CoreDataConnector::Place.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :place_relationships,
+          -> {
+            joins(:related_place)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Place.to_s })
+              .where(CoreDataConnector::Place.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
-        has_many :taxonomy_relationships, -> {
-          joins(:related_taxonomy)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Taxonomy.to_s })
-            .where(CoreDataConnector::Taxonomy.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :taxonomy_relationships,
+          -> {
+            joins(:related_taxonomy)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Taxonomy.to_s })
+              .where(CoreDataConnector::Taxonomy.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
-        has_many :work_relationships, -> {
-          joins(:related_work)
-            .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Work.to_s })
-            .where(CoreDataConnector::Work.arel_table[:published].eq(true))
-        }, as: :primary_record, class_name: Relationship.to_s
+        has_many :work_relationships,
+          -> {
+            joins(:related_work)
+              .where(Relationship.arel_table.name => { related_record_type: CoreDataConnector::Work.to_s })
+              .where(CoreDataConnector::Work.arel_table[:published].eq(true))
+          },
+          as: :primary_record,
+          class_name: Relationship.to_s
 
         # Related relationships
-        has_many :event_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_event)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Event.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::Event.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :event_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_event)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Event.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::Event.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
-        has_many :instance_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_instance)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Instance.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::Instance.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :instance_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_instance)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Instance.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::Instance.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
-        has_many :item_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_item)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Item.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::Item.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :item_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_item)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Item.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::Item.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
-        has_many :media_content_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_media_content)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::MediaContent.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::MediaContent.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :media_content_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_media_content)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::MediaContent.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::MediaContent.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
-        has_many :organization_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_organization)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Organization.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::Organization.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :organization_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_organization)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Organization.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::Organization.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
-        has_many :person_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_person)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Person.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::Person.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :person_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_person)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Person.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::Person.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
-        has_many :place_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_place)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Place.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::Place.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :place_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_place)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Place.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::Place.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
-        has_many :taxonomy_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_taxonomy)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Taxonomy.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::Taxonomy.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :taxonomy_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_taxonomy)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Taxonomy.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::Taxonomy.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
-        has_many :work_related_relationships, -> {
-          joins(:project_model_relationship)
-            .joins(:inverse_related_work)
-            .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Work.to_s })
-            .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
-            .where(CoreDataConnector::Work.arel_table[:published].eq(true))
-        }, as: :related_record, class_name: Relationship.to_s
+        has_many :work_related_relationships,
+          -> {
+            joins(:project_model_relationship)
+              .joins(:inverse_related_work)
+              .where(Relationship.arel_table.name => { primary_record_type: CoreDataConnector::Work.to_s })
+              .where(ProjectModelRelationship.arel_table.name => { allow_inverse: true })
+              .where(CoreDataConnector::Work.arel_table[:published].eq(true))
+          },
+          as: :related_record,
+          class_name: Relationship.to_s
 
         # Include the ID attributes as a string by default
         search_attribute(:id) { uuid }
@@ -360,10 +412,10 @@ module CoreDataConnector
             name = attr[:name]
 
             # Extract the value for the attribute
-            if attr[:block].present?
-              value = instance_exec(options, &attr[:block])
+            value = if attr[:block].present?
+              instance_exec(options, &attr[:block])
             else
-              value = self.send(attr[:name])
+              send(attr[:name])
             end
 
             # Skip the property of the value is empty
@@ -400,14 +452,14 @@ module CoreDataConnector
             owner_project = {
               id: project_model.project.id,
               name: project_model.project.name,
-              name_facet: project_model.project.name
+              name_facet: project_model.project.name,
             }
 
             hash['owner_project'] = owner_project
           end
 
           # Add the year range for related events
-          build_event_range hash
+          build_event_range(hash)
 
           hash
         end
@@ -415,7 +467,7 @@ module CoreDataConnector
         private
 
         def add_project(projects, project)
-          return if projects.any?{ |p| p[:id] == project.id }
+          return if projects.any? { |p| p[:id] == project.id }
 
           projects << { id: project.id, name: project.name, name_facet: project.name }
         end
@@ -425,8 +477,8 @@ module CoreDataConnector
           max_range = nil
 
           events = [
-            *event_relationships.map{ |r| r.related_record },
-            *event_related_relationships.map{ |r| r.primary_record }
+            *event_relationships.map { |r| r.related_record },
+            *event_related_relationships.map { |r| r.primary_record },
           ]
 
           events.each do |event|
@@ -462,10 +514,10 @@ module CoreDataConnector
           hash[key] ||= []
 
           hash[key] << relationship
-                         .inverse_related_place_with_search_geometry
-                         .to_search_json(options)
-                         .merge(user_defined)
-                         .merge({ inverse: true })
+            .inverse_related_place_with_search_geometry
+            .to_search_json(options)
+            .merge(user_defined)
+            .merge({ inverse: true })
         end
 
         def build_inverse_relationship(relationship, hash, projects, options)
@@ -480,10 +532,10 @@ module CoreDataConnector
           hash[key] ||= []
 
           hash[key] << relationship
-                         .primary_record
-                         .to_search_json(options)
-                         .merge(user_defined)
-                         .merge({ inverse: true })
+            .primary_record
+            .to_search_json(options)
+            .merge(user_defined)
+            .merge({ inverse: true })
         end
 
         def build_place_relationship(relationship, hash, projects, options)
@@ -498,10 +550,10 @@ module CoreDataConnector
           hash[key] ||= []
 
           hash[key] << relationship
-                         .related_place_with_search_geometry
-                         .to_search_json(options)
-                         .merge(user_defined)
-                         .merge({ inverse: false })
+            .related_place_with_search_geometry
+            .to_search_json(options)
+            .merge(user_defined)
+            .merge({ inverse: false })
         end
 
         def build_relationship(relationship, hash, projects, options)
@@ -516,10 +568,10 @@ module CoreDataConnector
           hash[key] ||= []
 
           hash[key] << relationship
-                         .related_record
-                         .to_search_json(options)
-                         .merge(user_defined)
-                         .merge({ inverse: false })
+            .related_record
+            .to_search_json(options)
+            .merge(user_defined)
+            .merge({ inverse: false })
         end
 
         def build_relationships(hash, projects, options)
@@ -537,7 +589,7 @@ module CoreDataConnector
           instance_related_relationships.each { |r| build_inverse_relationship(r, hash, projects, options) }
           item_related_relationships.each { |r| build_inverse_relationship(r, hash, projects, options) }
           media_content_related_relationships.each { |r| build_inverse_relationship(r, hash, projects, options) }
-          organization_related_relationships.each { |r| build_inverse_relationship(r,hash, projects, options) }
+          organization_related_relationships.each { |r| build_inverse_relationship(r, hash, projects, options) }
           person_related_relationships.each { |r| build_inverse_relationship(r, hash, projects, options) }
           place_related_relationships.each { |r| build_inverse_place_relationship(r, hash, projects, options) }
           taxonomy_related_relationships.each { |r| build_inverse_relationship(r, hash, projects, options) }

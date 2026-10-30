@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   def self.table_name_prefix
     'core_data_connector_'

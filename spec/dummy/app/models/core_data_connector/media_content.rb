@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   class MediaContent < ApplicationRecord
     # Includes
@@ -25,26 +27,26 @@ module CoreDataConnector
     after_save :update_manifests
 
     # User defined fields parent
-    resolve_defineable -> (media_content) { media_content.project_model }
+    resolve_defineable ->(media_content) { media_content.project_model }
 
     def metadata
       fields = [{
         label: I18n.t('services.iiif.manifest.content_warning'),
-        value: self[:content_warning]
+        value: self[:content_warning],
       }]
 
-      if !self.user_defined || self.user_defined.keys.count == 0
+      if !user_defined || user_defined.keys.count == 0
         return fields.to_json
       end
 
       udfs = UserDefinedFields::UserDefinedField
-        .where(uuid: self.user_defined.keys)
+        .where(uuid: user_defined.keys)
         .order(:order)
 
       udfs.each do |udf|
         fields.push({
           label: udf[:column_name],
-          value: self.user_defined[udf[:uuid]]
+          value: user_defined[udf[:uuid]],
         })
       end
 
@@ -56,8 +58,8 @@ module CoreDataConnector
     def update_manifests
       iiif_service = Iiif::Manifest.new
 
-      self.relationships.each { |r| update_relationship_manifests(r, iiif_service, true) }
-      self.related_relationships.each { |r| update_relationship_manifests(r, iiif_service, false) }
+      relationships.each { |r| update_relationship_manifests(r, iiif_service, true) }
+      related_relationships.each { |r| update_relationship_manifests(r, iiif_service, false) }
     end
 
     def update_relationship_manifests(relationship, service, is_primary)
@@ -72,7 +74,7 @@ module CoreDataConnector
       service.reset_manifests_by_type(related_model, {
         id: related_record_id,
         project_model_relationship_id: relationship.project_model_relationship_id,
-        limit: ENV['IIIF_MANIFEST_ITEM_LIMIT']
+        limit: ENV['IIIF_MANIFEST_ITEM_LIMIT'],
       })
     end
   end

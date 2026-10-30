@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   class ProjectModel < ApplicationRecord
     # Includes
@@ -69,7 +71,7 @@ module CoreDataConnector
         ProjectModelAccess
           .where(access_table[:project_model_id].eq(model_table[:id]))
           .arel
-          .exists
+          .exists,
       )
     end
 

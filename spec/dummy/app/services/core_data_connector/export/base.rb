@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Export
     module Base
@@ -25,10 +27,10 @@ module CoreDataConnector
             name = attr[:name]
 
             # Extract the value for the attribute
-            if attr[:block].present?
-              value = instance_eval(&attr[:block])
+            value = if attr[:block].present?
+              instance_eval(&attr[:block])
             else
-              value = self.send(attr[:name])
+              send(attr[:name])
             end
 
             # Add the name/value pair to the CSV
@@ -44,7 +46,7 @@ module CoreDataConnector
         private
 
         def add_user_defined_fields(hash, user_defined_fields)
-          return unless user_defined_fields.present? && self.respond_to?(:user_defined) && user_defined.present?
+          return unless user_defined_fields.present? && respond_to?(:user_defined) && user_defined.present?
 
           user_defined_fields.each do |user_defined_field|
             key = ImportAnalyze::Helper.uuid_to_column_name(user_defined_field.uuid)

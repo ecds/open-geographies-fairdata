@@ -9,10 +9,14 @@
 # which a recreated table would have to fetch from the GeoNames API again.
 class RenameCoreDataConnectorOpenGeographiesTables < ActiveRecord::Migration[8.1]
   def change
-    rename_table :core_data_connector_open_geographies_project_model_roles,
-      :open_geographies_project_model_roles
+    rename_table(
+      :core_data_connector_open_geographies_project_model_roles,
+      :open_geographies_project_model_roles,
+    )
 
-    rename_table :core_data_connector_open_geographies_geonames_hierarchies,
-      :open_geographies_geonames_hierarchies
+    rename_table(
+      :core_data_connector_open_geographies_geonames_hierarchies,
+      :open_geographies_geonames_hierarchies,
+    )
   end
 end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module ImportAnalyze
     module Base
@@ -17,13 +19,13 @@ module CoreDataConnector
 
           group_columns = [
             :project_model_id,
-            *group_by_columns
+            *group_by_columns,
           ]
 
           select_columns = [
             *group_columns,
             "MIN(#{primary_key}) AS primary_id",
-            "ARRAY_REMOVE(ARRAY_AGG(#{primary_key}), MIN(#{primary_key})) AS duplicate_ids"
+            "ARRAY_REMOVE(ARRAY_AGG(#{primary_key}), MIN(#{primary_key})) AS duplicate_ids",
           ]
 
           base_query
@@ -33,7 +35,6 @@ module CoreDataConnector
             .group(group_columns)
             .having('COUNT(*) > 1')
         end
-
       end
     end
   end

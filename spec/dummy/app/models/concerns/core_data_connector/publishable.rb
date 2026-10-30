@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Publishable
     extend ActiveSupport::Concern

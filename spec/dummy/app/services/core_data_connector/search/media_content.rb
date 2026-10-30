@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Search
     module MediaContent
@@ -15,7 +17,6 @@ module CoreDataConnector
           content_thumbnail_url
         end
       end
-
     end
   end
 end

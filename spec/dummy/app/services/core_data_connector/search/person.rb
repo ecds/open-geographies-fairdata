@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Search
     module Person
@@ -27,7 +29,6 @@ module CoreDataConnector
         def create_name(person_name)
           [person_name.first_name, person_name.middle_name, person_name.last_name].compact.join(' ')
         end
-
       end
     end
   end

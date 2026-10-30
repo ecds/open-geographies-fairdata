@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   class Version < ApplicationRecord
     include PaperTrail::VersionConcern

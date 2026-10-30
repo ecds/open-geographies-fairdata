@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   class Event < ApplicationRecord
     # Includes
@@ -23,6 +25,6 @@ module CoreDataConnector
     has_fuzzy_dates :start_date, :end_date
 
     # User defined fields parent
-    resolve_defineable -> (event) { event.project_model }
+    resolve_defineable ->(event) { event.project_model }
   end
 end

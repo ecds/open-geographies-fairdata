@@ -1,45 +1,58 @@
+# frozen_string_literal: true
+
 require 'csv'
 
 module CoreDataConnector
   module Export
     class Exporter
-
       attr_reader :project_id
 
-      EXPORT_CLASSES = [{
-        class: CoreDataConnector::Event,
-        filename: 'events.csv'
-      }, {
-        class: CoreDataConnector::Item,
-        filename: 'items.csv'
-     }, {
-        class: CoreDataConnector::Instance,
-        filename: 'instances.csv'
-     }, {
-        class: CoreDataConnector::MediaContent,
-        filename: 'media_contents.csv'
-     }, {
-        class: CoreDataConnector::Organization,
-        filename: 'organizations.csv'
-      }, {
-        class: CoreDataConnector::Person,
-        filename: 'people.csv'
-      }, {
-        class: CoreDataConnector::Place,
-        filename: 'places.csv'
-      }, {
-        class: CoreDataConnector::Relationship,
-        filename: 'relationships.csv'
-      }, {
-        class: CoreDataConnector::Taxonomy,
-        filename: 'taxonomies.csv'
-      }, {
-        class: CoreDataConnector::WebIdentifier,
-        filename: 'web_identifiers.csv'
-      }, {
-        class: CoreDataConnector::Work,
-        filename: 'works.csv'
-      }]
+      EXPORT_CLASSES = [
+        {
+          class: CoreDataConnector::Event,
+          filename: 'events.csv',
+        },
+        {
+          class: CoreDataConnector::Item,
+          filename: 'items.csv',
+        },
+        {
+          class: CoreDataConnector::Instance,
+          filename: 'instances.csv',
+        },
+        {
+          class: CoreDataConnector::MediaContent,
+          filename: 'media_contents.csv',
+        },
+        {
+          class: CoreDataConnector::Organization,
+          filename: 'organizations.csv',
+        },
+        {
+          class: CoreDataConnector::Person,
+          filename: 'people.csv',
+        },
+        {
+          class: CoreDataConnector::Place,
+          filename: 'places.csv',
+        },
+        {
+          class: CoreDataConnector::Relationship,
+          filename: 'relationships.csv',
+        },
+        {
+          class: CoreDataConnector::Taxonomy,
+          filename: 'taxonomies.csv',
+        },
+        {
+          class: CoreDataConnector::WebIdentifier,
+          filename: 'web_identifiers.csv',
+        },
+        {
+          class: CoreDataConnector::Work,
+          filename: 'works.csv',
+        },
+      ]
 
       def initialize(project_id)
         @project_id = project_id
@@ -66,9 +79,8 @@ module CoreDataConnector
 
           CSV.open(filepath, 'w', headers: headers, write_headers: true) do |csv|
             query.find_in_batches(batch_size: 1000) do |records|
-
               # Apply any preloads for the current model/batch
-              apply_preloads model_class, records
+              apply_preloads(model_class, records)
 
               # Iterate over each record and convert it to a CSV row
               records.each do |record|
@@ -87,26 +99,24 @@ module CoreDataConnector
         if klass.respond_to?(:export_preloads) && klass.export_preloads.present?
           Preloader.new(
             records: records,
-            associations: klass.export_preloads
+            associations: klass.export_preloads,
           ).call
         end
       end
 
       def build_user_defined_fields
         query = Queries
-                  .all_fields_by_project(project_id)
-                  .order(:uuid)
+          .all_fields_by_project(project_id)
+          .order(:uuid)
 
-        query.inject({}) do |hash, user_defined_field|
+        query.each_with_object({}) do |user_defined_field, hash|
           hash[user_defined_field.table_name] ||= []
           hash[user_defined_field.table_name] << user_defined_field
-
-          hash
         end
       end
 
       def find_headers(klass, user_defined_fields)
-        headers = klass.export_attributes.map{ |a| a[:name].to_s }
+        headers = klass.export_attributes.map { |a| a[:name].to_s }
 
         user_defined_fields.each do |user_defined_field|
           headers << ImportAnalyze::Helper.uuid_to_column_name(user_defined_field.uuid)
@@ -114,7 +124,6 @@ module CoreDataConnector
 
         headers
       end
-
     end
   end
 end

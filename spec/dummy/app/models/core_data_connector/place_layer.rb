@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   class PlaceLayer < ApplicationRecord
-    LAYER_TYPES = %w(geojson raster georeference)
+    LAYER_TYPES = ['geojson', 'raster', 'georeference']
 
     # Includes
     include Auditable

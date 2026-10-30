@@ -12,7 +12,7 @@ module OpenGeographies
   class ProjectModelRole < ApplicationRecord
     self.table_name = 'open_geographies_project_model_roles'
 
-    ROLES = %w[primary_place map_layer].freeze
+    ROLES = ['primary_place', 'map_layer'].freeze
 
     validates :project_model_id, presence: true
     validates :role, presence: true, inclusion: { in: ROLES }

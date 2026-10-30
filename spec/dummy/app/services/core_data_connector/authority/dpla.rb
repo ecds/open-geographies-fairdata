@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Authority
     class Dpla < Base
@@ -9,7 +11,7 @@ module CoreDataConnector
 
       def find(id, options = {})
         params = {
-          api_key: options[:api_key]
+          api_key: options[:api_key],
         }
 
         send_request("#{BASE_URL}/#{id}", method: :get, params: params) do |body|
@@ -21,7 +23,7 @@ module CoreDataConnector
         params = {
           api_key: options[:api_key],
           page_size: options[:limit] || DEFAULT_LIMIT,
-          q: query
+          q: query,
         }
 
         send_request(BASE_URL, method: :get, params: params) do |body|

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Authority
     class Geonames < Base
@@ -8,7 +10,7 @@ module CoreDataConnector
       def find(id, options = {})
         params = {
           geonameId: id,
-          username: options[:username]
+          username: options[:username],
         }
         send_request("#{BASE_URL}/getJSON", method: :get, params:) do |body|
           JSON.parse(body)
@@ -18,7 +20,7 @@ module CoreDataConnector
       def search(query, options = {})
         params = {
           q: query,
-          username: options[:username]
+          username: options[:username],
         }
         send_request("#{BASE_URL}/searchJSON?", method: :get, params:) do |body|
           JSON.parse(body)

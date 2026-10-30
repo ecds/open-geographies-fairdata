@@ -1,18 +1,19 @@
+# frozen_string_literal: true
+
 module CoreDataConnector
   module Reconcile
     class Manager
-
       def send_request(queries, credentials)
         client = Typesense.create_client(**credentials.except(:collection_name))
 
         common_params = {
-          query_by: 'name'
+          query_by: 'name',
         }
 
         params = build_params(queries, credentials[:collection_name])
         response = client.multi_search.perform(params, common_params)
 
-        transform response, queries.keys
+        transform(response, queries.keys)
       end
 
       private
@@ -45,8 +46,8 @@ module CoreDataConnector
 
             # collect into typesense filters
             filters = []
-            filters << "type:[#{class_names.join(',')}]" if class_names.any?
-            filters << "project_model_id:[#{project_model_ids.join(',')}]" if project_model_ids.any?
+            filters << "type:[#{class_names.join(",")}]" if class_names.any?
+            filters << "project_model_id:[#{project_model_ids.join(",")}]" if project_model_ids.any?
 
             # join by typesense OR
             search[:filter_by] = filters.join(' || ') if filters.any?
@@ -80,19 +81,19 @@ module CoreDataConnector
           match: false,
           type: [
             {
-              id: "type:#{klass.to_s}",
-              name: klass.name.demodulize
+              id: "type:#{klass}",
+              name: klass.name.demodulize,
             },
             {
               id: "model:#{project_model_id}",
-              name: "#{klass.name.demodulize} model #{project_model_id}"
+              name: "#{klass.name.demodulize} model #{project_model_id}",
             },
             # retain bare model_class string for backwards compatibility
             {
               id: klass.to_s,
-              name: klass.name.demodulize
-            }
-          ]
+              name: klass.name.demodulize,
+            },
+          ],
         }
 
         all_attributes = result['document'].merge(attributes).symbolize_keys
@@ -107,7 +108,6 @@ module CoreDataConnector
       def transform_results(results)
         results.map { |result| transform_result(result) }
       end
-
     end
   end
 end

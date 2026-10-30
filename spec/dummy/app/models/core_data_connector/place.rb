@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class Place < ApplicationRecord
     self.primary_key = :id
@@ -38,12 +36,12 @@ module CoreDataConnector
     delegate :name, to: :primary_name, allow_nil: true
 
     # User defined fields parent
-    resolve_defineable ->(place) { place.project_model }
+    resolve_defineable -> (place) { place.project_model }
 
     def self.centroid_function
       Arel::Nodes::NamedFunction.new(
         'st_centroid',
-        [PlaceGeometry.arel_table[:geometry]],
+        [PlaceGeometry.arel_table[:geometry]]
       ).as('geometry_center')
     end
 
@@ -62,15 +60,15 @@ module CoreDataConnector
           Arel::Nodes::Multiplication.new(
             Arel::Nodes.build_quoted(base_tolerance),
             Arel::Nodes::NamedFunction.new('sqrt', [
-              Arel::Nodes::NamedFunction.new('st_area', [geometry_column]),
-            ]),
-          ),
-        ],
+              Arel::Nodes::NamedFunction.new('st_area', [geometry_column])
+            ])
+          )
+        ]
       )
 
       Arel::Nodes::NamedFunction.new(
         'st_simplify',
-        [geometry_column, Arel::Nodes.build_quoted(tolerance)],
+        [geometry_column, Arel::Nodes.build_quoted(tolerance)]
       ).as('simplified_geometry')
     end
 
@@ -79,7 +77,7 @@ module CoreDataConnector
         .select(
           arel_table[Arel.star],
           centroid_function,
-          simplified_geometry_function,
+          simplified_geometry_function
         )
     end
   end

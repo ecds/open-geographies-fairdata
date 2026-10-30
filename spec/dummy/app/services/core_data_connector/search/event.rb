@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Search
     module Event
@@ -48,6 +46,7 @@ module CoreDataConnector
 
           [date.start_date&.strftime('%Y')&.to_i, date.end_date&.strftime('%Y')&.to_i]
         end
+
       end
     end
   end

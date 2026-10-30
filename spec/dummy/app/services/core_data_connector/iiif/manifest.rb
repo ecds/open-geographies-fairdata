@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Iiif
     class Manifest
@@ -27,10 +25,10 @@ module CoreDataConnector
           next unless model_class.ancestors.include?(Manifestable)
 
           options = {
-            limit: ENV['IIIF_MANIFEST_ITEM_LIMIT'],
+            limit: ENV['IIIF_MANIFEST_ITEM_LIMIT']
           }
 
-          reset_manifests_by_type(model_class, options)
+          reset_manifests_by_type model_class, options
         end
       end
 
@@ -40,7 +38,7 @@ module CoreDataConnector
         query = build_query(model_class, options)
 
         query.in_batches do |batch|
-          apply_preloads(batch, options)
+          apply_preloads batch, options
 
           batch.each do |record|
             # Build a mapping of all of the related resources indexed by project_model_relationship
@@ -53,14 +51,14 @@ module CoreDataConnector
               project_model_relationship = relationship.project_model_relationship
               resource = relationship.related_record
 
-              add_resource(hash, project_model_relationship, resource)
+              add_resource hash, project_model_relationship, resource
             end
 
             record.related_relationships.each do |relationship|
               project_model_relationship = relationship.project_model_relationship
               resource = relationship.primary_record
 
-              add_resource(hash, project_model_relationship, resource)
+              add_resource hash, project_model_relationship, resource
             end
 
             # Iterate over all of the relationships and build a manifest for each
@@ -70,7 +68,7 @@ module CoreDataConnector
               identifier = self.class.generate_identifier(
                 model_class: model_class,
                 uuid: record.uuid,
-                project_model_relationship_uuid: project_model_relationship_uuid,
+                project_model_relationship_uuid: project_model_relationship_uuid
               )
 
               # Create or update the manifest records
@@ -81,7 +79,7 @@ module CoreDataConnector
                 manifest = CoreDataConnector::Manifest.new(
                   manifestable: record,
                   project_model_relationship_id: project_model_relationship_id,
-                  identifier: identifier,
+                  identifier: identifier
                 )
               end
 
@@ -98,15 +96,15 @@ module CoreDataConnector
 
               # Create the manifest
               manifest.content = service.create_manifest(
-                id: "#{ENV["HOSTNAME"]}/#{identifier}",
+                id: "#{ENV['HOSTNAME']}/#{identifier}",
                 label: I18n.t('services.iiif.manifest.label', name: label, relationship: info[:name]),
-                resource_ids: resources,
+                resource_ids: resources
               )
 
               manifest.save
             end
 
-            remove_stale_manifests(record, hash, options)
+            remove_stale_manifests record, hash, options
           end
         end
       end
@@ -119,7 +117,7 @@ module CoreDataConnector
         hash[key] ||= {
           id: project_model_relationship.id,
           name: project_model_relationship.name,
-          resources: [],
+          resources: []
         }
 
         hash[key][:resources] << resource.resource_description.resource_id
@@ -127,51 +125,51 @@ module CoreDataConnector
 
       def apply_preloads(query, options)
         relationships_scope = Relationship
-          .joins(:related_media_content)
-          .where(MediaContent.arel_table[:published].eq(true))
-          .order(
-            Relationship.arel_table[:order],
-            MediaContent.arel_table[:name],
-            MediaContent.arel_table[:id],
-          )
+                                .joins(:related_media_content)
+                                .where(MediaContent.arel_table[:published].eq(true))
+                                .order(
+                                  Relationship.arel_table[:order],
+                                  MediaContent.arel_table[:name],
+                                  MediaContent.arel_table[:id]
+                                )
 
         if options[:project_model_relationship_id].present?
           relationships_scope = relationships_scope.where(
-            project_model_relationship_id: options[:project_model_relationship_id],
+            project_model_relationship_id: options[:project_model_relationship_id]
           )
         end
 
         Preloader.new(
           records: query,
           associations: [
-            relationships: [:project_model_relationship, :related_record],
+            relationships: [:project_model_relationship, :related_record]
           ],
-          scope: relationships_scope,
+          scope: relationships_scope
         ).call
 
         related_relationships_scope = Relationship
-          .joins(:project_model_relationship)
-          .joins(:inverse_related_media_content)
-          .where(project_model_relationship: { allow_inverse: true })
-          .where(MediaContent.arel_table[:published].eq(true))
-          .order(
-            Relationship.arel_table[:order],
-            MediaContent.arel_table[:name],
-            MediaContent.arel_table[:id],
-          )
+                                        .joins(:project_model_relationship)
+                                        .joins(:inverse_related_media_content)
+                                        .where(project_model_relationship: { allow_inverse: true })
+                                        .where(MediaContent.arel_table[:published].eq(true))
+                                        .order(
+                                          Relationship.arel_table[:order],
+                                          MediaContent.arel_table[:name],
+                                          MediaContent.arel_table[:id]
+                                        )
 
         if options[:project_model_relationship_id].present?
           related_relationships_scope = related_relationships_scope.where(
-            project_model_relationship_id: options[:project_model_relationship_id],
+            project_model_relationship_id: options[:project_model_relationship_id]
           )
         end
 
         Preloader.new(
           records: query,
           associations: [
-            related_relationships: [:project_model_relationship, :primary_record],
+            related_relationships: [:project_model_relationship, :primary_record]
           ],
-          scope: related_relationships_scope,
+          scope: related_relationships_scope
         ).call
       end
 
@@ -180,18 +178,19 @@ module CoreDataConnector
         related_model_table = Arel::Table.new('related_model')
 
         primary_query = ProjectModel
-          .joins(project_model_relationships: [:primary_model, :related_model])
-          .where(primary_model_table[:id].eq(model_class.arel_table[:project_model_id]))
-          .where(related_model: { model_class: MediaContent.to_s })
+                          .joins(project_model_relationships: [:primary_model, :related_model])
+                          .where(primary_model_table[:id].eq(model_class.arel_table[:project_model_id]))
+                          .where(related_model: { model_class: MediaContent.to_s })
 
         related_query = ProjectModel
-          .joins(project_model_relationships: [:primary_model, :related_model])
-          .where(related_model_table[:id].eq(model_class.arel_table[:project_model_id]))
-          .where(project_model_relationships: { allow_inverse: true })
-          .where(primary_model: { model_class: MediaContent.to_s })
+                          .joins(project_model_relationships: [:primary_model, :related_model])
+                          .where(related_model_table[:id].eq(model_class.arel_table[:project_model_id]))
+                          .where(project_model_relationships: { allow_inverse: true })
+                          .where(primary_model: { model_class: MediaContent.to_s })
 
         query = model_class
-          .where(primary_query.or(related_query).arel.exists)
+                  .where(primary_query.or(related_query).arel.exists)
+
 
         if options[:id].present?
           query = query.where(id: options[:id])
@@ -201,26 +200,27 @@ module CoreDataConnector
       end
 
       def find_manifest(record, project_model_relationship_id)
-        record.manifests.select { |m| m.project_model_relationship_id == project_model_relationship_id }.first
+        record.manifests.select{ |m| m.project_model_relationship_id == project_model_relationship_id }.first
       end
 
       # Destroys the manifests for relationships that no longer have any resources to display, so that a manifest is
       # not left behind for a relationship whose media contents have all been unpublished or deleted. Only the
       # relationship being reset is considered, if one was passed.
       def remove_stale_manifests(record, hash, options)
-        project_model_relationship_ids = hash.values.map { |info| info[:id] }
+        project_model_relationship_ids = hash.values.map{ |info| info[:id] }
 
         manifests = record
-          .manifests
-          .reject { |m| project_model_relationship_ids.include?(m.project_model_relationship_id) }
+                      .manifests
+                      .reject{ |m| project_model_relationship_ids.include?(m.project_model_relationship_id) }
 
         if options[:project_model_relationship_id].present?
           project_model_relationship_id = options[:project_model_relationship_id].to_i
-          manifests = manifests.select { |m| m.project_model_relationship_id == project_model_relationship_id }
+          manifests = manifests.select{ |m| m.project_model_relationship_id == project_model_relationship_id }
         end
 
         manifests.each(&:destroy)
       end
+
     end
   end
 end

@@ -1,8 +1,7 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module Authority
     class Base
+
       def self.create_service(authority)
         class_name = "CoreDataConnector::Authority::#{authority.source_type.capitalize}"
         klass = class_name.constantize
@@ -20,6 +19,7 @@ module CoreDataConnector
       def search(query, options = {})
         # Implemented in sub-classes
       end
+
     end
   end
 end

@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   class Manifest < ApplicationRecord
     # Relationships
@@ -11,7 +9,7 @@ module CoreDataConnector
 
     # Validations
     validates :project_model_relationship_id, uniqueness: {
-      scope: [:manifestable_id, :manifestable_type], message: I18n.t('errors.manifest.unique'),
+      scope: [:manifestable_id, :manifestable_type], message: I18n.t('errors.manifest.unique')
     }
   end
 end

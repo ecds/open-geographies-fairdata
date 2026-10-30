@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module CoreDataConnector
   module ImportAnalyze
     module Person
@@ -16,7 +14,7 @@ module CoreDataConnector
         def group_by_columns
           [
             CoreDataConnector::PersonName.arel_table[:last_name],
-            CoreDataConnector::PersonName.arel_table[:first_name],
+            CoreDataConnector::PersonName.arel_table[:first_name]
           ]
         end
       end

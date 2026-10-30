@@ -47,8 +47,11 @@ module OpenGeographies
         fetched = fetch(lat:, lng:)
         return cached&.hierarchy || [] if fetched.nil?
 
-        record = cached || new(place_id:)
-        record.update!(lat:, lng:, hierarchy: fetched, fetched_at: Time.current)
+        # One INSERT ... ON CONFLICT rather than find-then-save. Two indexing
+        # jobs can both miss the cache for the same place, and the later save
+        # would then raise on the unique place_id index. With upsert the later
+        # write updates the row instead.
+        upsert({ place_id:, lat:, lng:, hierarchy: fetched, fetched_at: Time.current }, unique_by: :place_id)
         fetched
       end
 

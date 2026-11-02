@@ -145,8 +145,13 @@ namespace :og_indexes do
     abort "Set CONFIRM=#{shared.name} to delete it. Every web and worker process must already run OG_INDEX_LAYOUT=per_project " \
       '(a process still on shared or both would recreate it on its next write).' unless ENV['CONFIRM'] == shared.name
 
-    shared.delete
-    puts "deleted #{shared.name}"
+    # A second run, after the index is gone, has nothing to do.
+    if shared.exists?
+      shared.delete
+      puts "deleted #{shared.name}"
+    else
+      puts "#{shared.name} does not exist; nothing to delete"
+    end
   end
 
   desc 'Delete the indexes of projects that no longer exist (CONFIRM=yes)'

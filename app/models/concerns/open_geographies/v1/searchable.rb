@@ -310,6 +310,9 @@ module OpenGeographies
 
         relations.each do |rel|
           next unless rel.allow_inverse
+          # A taxonomy term's inverse would list every record that has the
+          # term. Those are found by filtering on the term instead.
+          next if taxonomy_relationship?(rel)
 
           key = rel.inverse_name.parameterize.underscore.to_sym
 

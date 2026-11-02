@@ -454,6 +454,18 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect { v1_place.related_to }.not_to(raise_error)
       expect(v1_place.related_to).not_to(have_key(:contains))
     end
+
+    # The forward side writes the term's name on each record, so the records
+    # with a term are found by filtering on it.
+    it 'leaves out the inverse of a relationship pointing at a Taxonomy, which would list every record with the term' do
+      denomination_model = create(:taxonomy_model, project:)
+      rel = create(:project_model_relationship, primary_model: place_model, related_model: denomination_model, name: 'Denomination', multiple: false, allow_inverse: true, inverse_name: 'Churches')
+      term = create(:taxonomy, project_model: denomination_model, name: 'Congregational')
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: term)
+
+      expect(OpenGeographies::V1::Taxonomy.find(term.id).related_to).not_to(have_key(:churches))
+      expect(v1_place.related[:denomination]).to(eq('Congregational'))
+    end
   end
 
   describe '#featured' do

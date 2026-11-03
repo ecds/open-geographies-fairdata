@@ -29,6 +29,7 @@ RSpec.describe(OpenGeographies::GeonamesHierarchy) do
     response = instance_double(Net::HTTPResponse, body:)
     allow(response).to(receive(:is_a?).with(Net::HTTPSuccess).and_return(status == 200))
     allow(Net::HTTP).to(receive(:start).and_return(response))
+    response
   end
 
   describe '.fetch' do
@@ -152,6 +153,78 @@ RSpec.describe(OpenGeographies::GeonamesHierarchy) do
     it 'returns [] on a cold cache with no fallback available' do
       allow(Net::HTTP).to(receive(:start).and_raise(Net::OpenTimeout))
       expect(described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)).to(eq([]))
+    end
+
+    # Two indexing jobs can both miss the cache for the same place. The first
+    # to finish writes the row while the second is still waiting on GeoNames.
+    it 'does not raise when another job caches the same place while this one is fetching' do
+      response = stub_geonames
+      allow(Net::HTTP).to(receive(:start) do
+        described_class.create!(place_id: place.id, lat: 33.749, lng: -84.388, hierarchy: [], fetched_at: Time.current)
+        response
+      end)
+
+      result = described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)
+
+      expect(result.first[:name]).to(eq('Fulton County'))
+      expect(described_class.where(place_id: place.id).count).to(eq(1))
+      expect(described_class.find_by(place_id: place.id).hierarchy.first[:name]).to(eq('Fulton County'))
+    end
+
+    # The same race, with the other job's insert still uncommitted when this
+    # one saves. The uniqueness validation cannot see that row, so only the
+    # unique index on place_id catches the duplicate. This needs two real
+    # database connections, which transactional tests would merge into one.
+    context 'when the other job has not committed yet' do
+      self.use_transactional_tests = false
+
+      # No factories, since their rows would be committed. place_id has no
+      # foreign key, so any id works.
+      let(:place_id) { 987_654_321 }
+
+      after { described_class.where(place_id:).delete_all }
+
+      # Holds the other job's transaction open until this job's backend is
+      # blocked on its lock, so the interleaving does not depend on timing.
+      def wait_for_lock_wait(pid, connection)
+        deadline = 5.seconds.from_now
+        until Time.current > deadline
+          wait_type = connection.select_value("SELECT wait_event_type FROM pg_stat_activity WHERE pid = #{Integer(pid)}")
+          break if wait_type == 'Lock'
+
+          sleep(0.01)
+        end
+      end
+
+      it 'does not raise when the other job commits the same place first' do
+        response = stub_geonames
+        lookup_pid = described_class.connection.raw_connection.backend_pid
+        inserted = Queue.new
+        other_job = nil
+
+        allow(Net::HTTP).to(receive(:start) do
+          other_job = Thread.new do
+            described_class.connection_pool.with_connection do |connection|
+              described_class.transaction do
+                described_class.create!(place_id:, lat: 33.749, lng: -84.388, hierarchy: [], fetched_at: Time.current)
+                inserted << true
+                wait_for_lock_wait(lookup_pid, connection)
+              end
+            end
+          end
+          inserted.pop
+          response
+        end)
+
+        result = described_class.lookup(place_id:, lat: 33.749, lng: -84.388)
+        other_job.join
+
+        expect(result.first[:name]).to(eq('Fulton County'))
+        expect(described_class.where(place_id:).count).to(eq(1))
+        expect(described_class.find_by(place_id:).hierarchy.first[:name]).to(eq('Fulton County'))
+      ensure
+        other_job&.join
+      end
     end
   end
 end

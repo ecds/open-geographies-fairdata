@@ -78,18 +78,20 @@ module OpenGeographies
       end
 
       def extras
-        return {} unless place_geometry&.geometry
-
-        center = centroid
-        return {} unless center
-
-        lat = center['lat'].to_f
-        lon = center['lon'].to_f
+        point = center_point
+        return {} unless point
 
         {
-          geo: { point: { lat:, lon: } },
-          administrative_area: ::OpenGeographies::GeonamesHierarchy.lookup(place_id: id, lat:, lng: lon),
+          geo: { point: },
+          administrative_area: ::OpenGeographies::GeonamesHierarchy.lookup(place_id: id, lat: point[:lat], lng: point[:lon]),
         }
+      end
+
+      # A nested place keeps its point and leaves out administrative_area,
+      # which repeats the top-level record's own.
+      def summary_extras
+        point = center_point
+        point ? { geo: { point: } } : {}
       end
 
       # Adds the polygon shape to the top-level document only. Nested summaries
@@ -284,6 +286,13 @@ module OpenGeographies
       # Computed in SQL because the geometry is not always a bare Point (some
       # records are a GeometryCollection) and RGeo's GEOS binding has no
       # #centroid. PostGIS's ST_Centroid handles any geometry type.
+      def center_point
+        return unless place_geometry&.geometry
+
+        center = centroid
+        { lat: center['lat'].to_f, lon: center['lon'].to_f } if center
+      end
+
       def centroid
         @centroid ||= ::CoreDataConnector::PlaceGeometry.connection.select_one(
           ::CoreDataConnector::PlaceGeometry.sanitize_sql_array([

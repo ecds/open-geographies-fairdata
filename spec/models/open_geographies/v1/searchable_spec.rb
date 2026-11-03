@@ -284,15 +284,30 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(v1_place.related[:types]).to(eq(['Church', 'School']))
     end
 
-    it 'promotes Contained In to a real object under a key distinct from its own raw key' do
+    it 'writes Contained In only under its canonical key, not also under its own raw key' do
       county_model = create(:place_model, project:)
       county = create(:place, project_model: county_model, name: 'Grady County')
       rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false)
       create(:relationship, project_model_relationship: rel, primary_record: place, related_record: county)
 
       data = v1_place.related
-      expect(data[:contained_in]).to(include(name: 'Grady County'))
+      expect(data).not_to(have_key(:contained_in))
       expect(data[:contained_in_place]).to(include(name: 'Grady County'))
+    end
+
+    # The top-level record carries administrative_area, so a nested place
+    # would only repeat it.
+    it 'gives a nested place its point but not its administrative_area' do
+      county_model = create(:place_model, project:)
+      county = create(:place, project_model: county_model, name: 'Grady County')
+      create(:place_geometry, place: county)
+      rel = create(:project_model_relationship, primary_model: place_model, related_model: county_model, name: 'Contained In', multiple: false)
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: county)
+      allow(OpenGeographies::GeonamesHierarchy).to(receive(:lookup).and_return([{ level: 'ADM1', name: 'Georgia' }]))
+
+      county_summary = v1_place.related[:contained_in_place]
+      expect(county_summary[:geo]).to(eq(point: { lat: 34.0, lon: -81.0 }))
+      expect(county_summary).not_to(have_key(:administrative_area))
     end
 
     # #summarize includes a nested record's own user-defined fields at any depth.

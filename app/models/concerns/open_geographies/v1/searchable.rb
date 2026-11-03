@@ -216,14 +216,19 @@ module OpenGeographies
         {}
       end
 
+      # The extras a nested summary of this record carries.
+      def summary_extras
+        extras
+      end
+
       # Walks every relationship from this record. Each is indexed under its
       # own name-derived key, with the value chosen by #relationship_value: a
       # plain array of names for a relationship that points at a Taxonomy,
       # which only needs to be filtered on, or a depth-limited summary for
       # anything else, which needs a uuid and slug so a client can link to it.
       # A promoted relationship (an exact name match against
-      # PromotedRelationships.for(self)) also gets the same value under its
-      # canonical key.
+      # PromotedRelationships.for(self)) is written under its canonical key
+      # in place of its own.
       #
       # A taxonomy relationship gets the plain-name form whether or not it is
       # promoted. A summary of a taxonomy term would include every other record
@@ -271,8 +276,7 @@ module OpenGeographies
             value = relationship_value(item, rel, depth, visited)
           end
 
-          written_key = assign_unique!(related_records, raw_key, value)
-          assign_promoted!(related_records, promoted_key, raw_key, written_key, value) if promoted_key
+          assign_unique!(related_records, promoted_key || raw_key, value)
 
           # A taxonomy relationship that is not promoted has no explicit keyword
           # mapping, so its names would be indexed as analyzed text, which is
@@ -422,7 +426,7 @@ module OpenGeographies
       private
 
       # A depth-limited summary of a related record. At depth 0 it is the base
-      # data plus the record's own extras and user-defined fields, with no
+      # data plus the record's summary extras and user-defined fields, with no
       # further relationships; those are scalar properties of the record, so
       # they are included at any depth. Above 0, one more layer of the record's
       # relationships is added.
@@ -431,7 +435,7 @@ module OpenGeographies
       # before recursing, so descendants know every ancestor that is being
       # serialized and not just their immediate parent (see #related).
       def summarize(record, depth, visited = [record_identity(record)])
-        base = { **record.base_search_data, **record.extras }
+        base = { **record.base_search_data, **record.summary_extras }
         record.user_defined_fields.each { |key, value| assign_unique!(base, key, value) }
         return base if depth <= 0
 
@@ -442,8 +446,8 @@ module OpenGeographies
         base
       end
 
-      # The value #related writes for a relationship, under both its raw and
-      # its promoted key. A relationship that points at a Taxonomy gets bare
+      # The value #related writes for a relationship. A relationship that
+      # points at a Taxonomy gets bare
       # names, since it is only filtered on. Any other relationship gets a
       # depth-limited summary, which carries the uuid and slug a client needs
       # to link to the record.
@@ -505,21 +509,6 @@ module OpenGeographies
         end
         hash[candidate] = value
         candidate
-      end
-
-      # Writes the promoted-key value for #related. When the promoted key is
-      # the same string as the relationship's raw key and the raw write landed
-      # on it without a suffix, the promoted value replaces it: the curator used
-      # the canonical name, so they are the same relationship and not a
-      # collision. If the raw write was moved to `_2` because an earlier
-      # relationship already held the key, the promoted value must not
-      # overwrite that earlier one, so it goes through assign_unique!.
-      def assign_promoted!(hash, promoted_key, raw_key, written_key, value)
-        if promoted_key == raw_key && written_key == raw_key
-          hash[promoted_key] = value
-        else
-          assign_unique!(hash, promoted_key, value)
-        end
       end
 
       # Writes `value` into `attributes` at a dotted path, creating

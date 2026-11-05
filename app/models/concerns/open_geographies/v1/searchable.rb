@@ -97,7 +97,7 @@ module OpenGeographies
       def search_data
         data = { **base_search_data, **extras }
 
-        [user_defined_fields, related(DEFAULT_DEPTH), related_to(DEFAULT_DEPTH), featured].each do |additions|
+        [user_defined_fields, related(DEFAULT_DEPTH), related_to, featured].each do |additions|
           additions.each { |key, value| assign_unique!(data, key, value) }
         end
 
@@ -235,7 +235,7 @@ module OpenGeographies
       # that shares the term.
       #
       # `visited` holds the records already being serialized higher up the call
-      # stack, and is passed through #summarize, #related and #related_to. A
+      # stack, and is passed through #summarize and #related. A
       # record already in it is skipped, which prevents a record from embedding
       # itself again through a relationship that leads back to it.
       def related(depth = DEFAULT_DEPTH, visited = [record_identity(self)])
@@ -304,10 +304,17 @@ module OpenGeographies
       # (multiple), but each Place belongs to one County (inverse_multiple is
       # false).
       #
-      # `visited` (see #related) keeps this from walking back to a record that
-      # is already being serialized. The inverse direction is where that
-      # happens, because it resolves the record that owns the relationship.
-      def related_to(depth = DEFAULT_DEPTH, visited = [record_identity(self)])
+      # Each inverse record is a depth-0 summary (base data, extras and UDFs,
+      # with no relationships of its own), and #summarize never adds this
+      # direction to a nested record. The inverse side is the large one: a
+      # County's inverse lists every Place in it, so expanding it inside each
+      # of those Places' documents embedded every Place in the county into
+      # every other one, which grew the index quadratically and exhausted
+      # memory while building it.
+      #
+      # `visited` (see #related) keeps a record from listing itself through a
+      # relationship that points back at it.
+      def related_to(visited = [record_identity(self)])
         related_records = {}
 
         relations = ::CoreDataConnector::ProjectModelRelationship.where(related_model: project_model)
@@ -330,7 +337,7 @@ module OpenGeographies
             items = items.reject { |item| visited.include?(record_identity(item)) }
             next if items.empty?
 
-            value = items.map { |item| summarize(item, depth, visited) }
+            value = items.map { |item| summarize(item, 0) }
           else
             relation = ::CoreDataConnector::Relationship.find_by(project_model_relationship: rel, related_record: self)
             next if relation.nil?
@@ -338,7 +345,7 @@ module OpenGeographies
             item = related_class(relation.primary_record_type).find_by(id: relation.primary_record_id)
             next if item.nil? || visited.include?(record_identity(item))
 
-            value = summarize(item, depth, visited)
+            value = summarize(item, 0)
           end
 
           assign_unique!(related_records, key, value)
@@ -429,7 +436,8 @@ module OpenGeographies
       # data plus the record's summary extras and user-defined fields, with no
       # further relationships; those are scalar properties of the record, so
       # they are included at any depth. Above 0, one more layer of the record's
-      # relationships is added.
+      # forward relationships is added. Its inverse relationships are never
+      # added (see #related_to for why).
       #
       # `visited` defaults to the record itself. It is extended with the record
       # before recursing, so descendants know every ancestor that is being
@@ -440,9 +448,7 @@ module OpenGeographies
         return base if depth <= 0
 
         child_visited = visited | [record_identity(record)]
-        [record.related(depth - 1, child_visited), record.related_to(depth - 1, child_visited)].each do |additions|
-          additions.each { |key, value| assign_unique!(base, key, value) }
-        end
+        record.related(depth - 1, child_visited).each { |key, value| assign_unique!(base, key, value) }
         base
       end
 

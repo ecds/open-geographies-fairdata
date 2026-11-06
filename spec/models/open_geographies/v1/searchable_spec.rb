@@ -428,7 +428,7 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       create(:relationship, project_model_relationship: rel, primary_record: place, related_record: county)
       create(:relationship, project_model_relationship: rel, primary_record: neighbor, related_record: county)
 
-      county_summary = v1_place.related[:contained_in]
+      county_summary = v1_place.related[:contained_in_place]
       expect(county_summary).to(include(name: 'Glynn County'))
       expect(county_summary).not_to(have_key(:contains))
     end

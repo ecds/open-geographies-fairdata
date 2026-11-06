@@ -571,5 +571,43 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(data[:name]).to(eq('Evergreen Church'))
       expect(data[:name_2]).to(include(name: 'Should Not Win'))
     end
+
+    # A tour's "Stops" relationship has the reverse side "Tours" on each stop,
+    # as in canonical_template.json. `place` is the tour's first stop.
+    context 'with a tour and its stops' do
+      let(:tours_model) { create(:place_model, project:, model_class: 'CoreDataConnector::Instance') }
+      let(:tour) { create(:instance, project_model: tours_model, name: 'Coastal Churches') }
+      let(:other_stop) { create(:place, project_model: place_model, name: 'Christ Church') }
+
+      before do
+        rel = create(
+          :project_model_relationship,
+          primary_model: tours_model,
+          related_model: place_model,
+          name: 'Stops',
+          multiple: true,
+          allow_inverse: true,
+          inverse_name: 'Tours',
+          inverse_multiple: true,
+        )
+        create(:relationship, project_model_relationship: rel, primary_record: tour, related_record: place, order: 1)
+        create(:relationship, project_model_relationship: rel, primary_record: tour, related_record: other_stop, order: 2)
+      end
+
+      # Listing the tour's stops here would embed every other stop of the
+      # tour in each stop's document.
+      it "lists a stop's tour without the tour's stops" do
+        tours = v1_place.search_data[:tours]
+
+        expect(tours.map { |summary| summary[:name] }).to(eq(['Coastal Churches']))
+        expect(tours.first).not_to(have_key(:stops))
+      end
+
+      it "still lists a tour's own stops in its document" do
+        stops = OpenGeographies::V1::Instance.find(tour.id).search_data[:stops]
+
+        expect(stops.map { |summary| summary[:name] }).to(eq(['Evergreen Church', 'Christ Church']))
+      end
+    end
   end
 end

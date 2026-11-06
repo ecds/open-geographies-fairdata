@@ -349,9 +349,10 @@ module OpenGeographies
 
       # A relationship that has a Boolean field whose column name contains
       # "featured" promotes the related record with that box checked to a
-      # singular key named after the relationship (for example a Place's
-      # featured_media). Any relationship can carry such a field, so this is
-      # not tied to the canonical names.
+      # "featured_" key named after the relationship (for example a Place's
+      # featured_media). The name is not singularized, since ActiveSupport
+      # turns "media" into "medium". Any relationship can carry such a field,
+      # so this is not tied to the canonical names.
       def featured
         featured_recs = {}
 
@@ -368,7 +369,7 @@ module OpenGeographies
           next if featured_rel.nil?
 
           item = related_class(featured_rel.related_record_type).find(featured_rel.related_record_id)
-          key = project_model_relationship.name.parameterize.underscore.singularize.to_sym
+          key = :"featured_#{project_model_relationship.name.parameterize.underscore}"
           assign_unique!(featured_recs, key, summarize(item, 0))
         end
 

@@ -12,6 +12,7 @@ OpenGeographies::Engine.routes.draw do
     get ':project/places/:slug', to: 'places#show'
     get ':project/map_layers', to: 'map_layers#index'
     get ':project/map_layers/:slug', to: 'map_layers#show'
+    get ':project/map_layers/:slug/annotation', to: 'map_layers#annotation'
     get ':project/tours/:slug', to: 'tours#show'
   end
 end

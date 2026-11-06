@@ -484,10 +484,10 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
   end
 
   describe '#featured' do
-    # The key is the relationship's name, parameterized and singularized, with no
-    # "featured_" prefix. ActiveSupport singularizes "media" to "medium", so a
-    # relationship named "Media" is written at :medium.
-    it 'promotes the related record whose Featured UDF is checked to a singular key' do
+    # The key is "featured_" and the relationship's name, parameterized. It is
+    # not singularized: ActiveSupport singularizes "media" to "medium", which
+    # left featured_media (the key the mapping and the renderer use) empty.
+    it 'promotes the related record whose Featured UDF is checked to featured_<relationship>' do
       media_model = create(:place_model, project:, model_class: 'CoreDataConnector::MediaContent')
       rel = create(:project_model_relationship, primary_model: place_model, related_model: media_model, name: 'Media', multiple: true)
       featured_udf = create(:user_defined_field, defineable: rel, column_name: 'Featured', data_type: 'Boolean', order: 0)
@@ -497,7 +497,9 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       create(:relationship, project_model_relationship: rel, primary_record: place, related_record: unfeatured, user_defined: { featured_udf.uuid => false })
       create(:relationship, project_model_relationship: rel, primary_record: place, related_record: featured, user_defined: { featured_udf.uuid => true })
 
-      expect(v1_place.featured[:medium]).to(include(name: 'Featured Photo'))
+      expect(v1_place.featured.keys).to(eq([:featured_media]))
+      expect(v1_place.featured[:featured_media]).to(include(name: 'Featured Photo'))
+      expect(v1_place.search_data[:featured_media]).to(include(name: 'Featured Photo'))
     end
   end
 

@@ -15,18 +15,40 @@ module OpenGeographies
       end
 
       def show
-        @record = MapLayer.search(
-          '*',
-          where: { model_type: 'map_layer', project_id: project_id, slugs: params[:slug] },
-          limit: 1,
-          load: false,
-        ).first
+        @record = find_map_layer
         render(json: @record, status: :ok) and return if @record
 
         render(json: {}, status: :not_found)
       end
 
+      # The layer's stored IIIF georeference annotation page, unchanged, for
+      # renderers that load annotations by URL. The layer is found through the
+      # index as in #show, so unpublished layers and layers of projects that
+      # are not discoverable stay hidden.
+      def annotation
+        document = find_map_layer
+        layer = document && MapLayer.find_by(uuid: document[:uuid])
+        content = layer && georeference_content(layer)
+        render(json: content, status: :ok) and return if content
+
+        render(json: {}, status: :not_found)
+      end
+
       private
+
+      def find_map_layer
+        MapLayer.search(
+          '*',
+          where: { model_type: 'map_layer', project_id: project_id, slugs: params[:slug] },
+          limit: 1,
+          load: false,
+        ).first
+      end
+
+      # A String passed to render(json:) is sent as it is, not encoded again.
+      def georeference_content(layer)
+        layer.place_layers.where(layer_type: 'georeference').where.not(content: [nil, '']).order(:id).pick(:content)
+      end
 
       def where_clause
         clause = { model_type: 'map_layer', project_id: project_id }

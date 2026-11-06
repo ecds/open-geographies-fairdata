@@ -386,6 +386,9 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
     # work's inverse relationship, which resolves back to the place that owns it.
     # `visited` tracks the records already being serialized, so this applies to any
     # relationship that leads back to an ancestor.
+    # The Work's inverse ("Church") would list this place again. Nested
+    # summaries carry no inverse relationships at all (see the next example),
+    # so it cannot appear here.
     it 'does not re-embed the record itself when a related record\'s inverse relationship points back to it' do
       works_model = create(:place_model, project:, model_class: 'CoreDataConnector::Work')
       works_rel = create(
@@ -403,6 +406,31 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       work_summary = v1_place.related[:works].first
       expect(work_summary[:name]).to(eq('Cemetery'))
       expect(work_summary).not_to(have_key(:church))
+    end
+
+    # A County's inverse lists every Place in it. Expanding it inside each of
+    # those Places' documents embedded every Place in the county into every
+    # other one, which grew the index quadratically (issue #5).
+    it 'does not expand a related record\'s inverse relationships, so a place does not embed the other places in its county' do
+      county_model = create(:place_model, project:)
+      county = create(:place, project_model: county_model, name: 'Glynn County')
+      neighbor = create(:place, project_model: place_model, name: 'Glynn Academy')
+      rel = create(
+        :project_model_relationship,
+        primary_model: place_model,
+        related_model: county_model,
+        name: 'Contained In',
+        multiple: false,
+        allow_inverse: true,
+        inverse_name: 'Contains',
+        inverse_multiple: true,
+      )
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: county)
+      create(:relationship, project_model_relationship: rel, primary_record: neighbor, related_record: county)
+
+      county_summary = v1_place.related[:contained_in_place]
+      expect(county_summary).to(include(name: 'Glynn County'))
+      expect(county_summary).not_to(have_key(:contains))
     end
 
     describe 'key collisions (Core Data enforces no name uniqueness)' do
@@ -455,6 +483,33 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       create(:relationship, project_model_relationship: rel, primary_record: county, related_record: place)
 
       expect(v1_place.related_to[:contains]).to(include(name: 'Grady County'))
+    end
+
+    # The Media relationship does not lead back to the county, so the visited
+    # check would not remove it. Only the depth-0 rule keeps it out.
+    it 'lists each inverse record as a depth-0 summary, without that record\'s own relationships' do
+      county_model = create(:place_model, project:)
+      county = create(:place, project_model: county_model, name: 'Glynn County')
+      rel = create(
+        :project_model_relationship,
+        primary_model: place_model,
+        related_model: county_model,
+        name: 'Contained In',
+        multiple: false,
+        allow_inverse: true,
+        inverse_name: 'Contains',
+        inverse_multiple: true,
+      )
+      create(:relationship, project_model_relationship: rel, primary_record: place, related_record: county)
+
+      media_model = create(:place_model, project:, model_class: 'CoreDataConnector::MediaContent')
+      media_rel = create(:project_model_relationship, primary_model: place_model, related_model: media_model, name: 'Media', multiple: true)
+      media = create(:media_content, project_model: media_model, name: 'A Photo')
+      create(:relationship, project_model_relationship: media_rel, primary_record: place, related_record: media)
+
+      place_summary = OpenGeographies::V1::Place.find(county.id).related_to[:contains].first
+      expect(place_summary).to(include(name: 'Evergreen Church'))
+      expect(place_summary).not_to(have_key(:media))
     end
 
     # The inverse direction also skips a relationship row whose record has been
@@ -515,6 +570,44 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       data = v1_place.search_data
       expect(data[:name]).to(eq('Evergreen Church'))
       expect(data[:name_2]).to(include(name: 'Should Not Win'))
+    end
+
+    # A tour's "Stops" relationship has the reverse side "Tours" on each stop,
+    # as in canonical_template.json. `place` is the tour's first stop.
+    context 'with a tour and its stops' do
+      let(:tours_model) { create(:place_model, project:, model_class: 'CoreDataConnector::Instance') }
+      let(:tour) { create(:instance, project_model: tours_model, name: 'Coastal Churches') }
+      let(:other_stop) { create(:place, project_model: place_model, name: 'Christ Church') }
+
+      before do
+        rel = create(
+          :project_model_relationship,
+          primary_model: tours_model,
+          related_model: place_model,
+          name: 'Stops',
+          multiple: true,
+          allow_inverse: true,
+          inverse_name: 'Tours',
+          inverse_multiple: true,
+        )
+        create(:relationship, project_model_relationship: rel, primary_record: tour, related_record: place, order: 1)
+        create(:relationship, project_model_relationship: rel, primary_record: tour, related_record: other_stop, order: 2)
+      end
+
+      # Listing the tour's stops here would embed every other stop of the
+      # tour in each stop's document.
+      it "lists a stop's tour without the tour's stops" do
+        tours = v1_place.search_data[:tours]
+
+        expect(tours.map { |summary| summary[:name] }).to(eq(['Coastal Churches']))
+        expect(tours.first).not_to(have_key(:stops))
+      end
+
+      it "still lists a tour's own stops in its document" do
+        stops = OpenGeographies::V1::Instance.find(tour.id).search_data[:stops]
+
+        expect(stops.map { |summary| summary[:name] }).to(eq(['Evergreen Church', 'Christ Church']))
+      end
     end
   end
 end

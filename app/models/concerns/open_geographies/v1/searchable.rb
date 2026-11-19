@@ -307,10 +307,9 @@ module OpenGeographies
       # Each inverse record is a depth-0 summary (base data, extras and UDFs,
       # with no relationships of its own), and #summarize never adds this
       # direction to a nested record. The inverse side is the large one: a
-      # County's inverse lists every Place in it, so expanding it inside each
-      # of those Places' documents embedded every Place in the county into
-      # every other one, which grew the index quadratically and exhausted
-      # memory while building it.
+      # County's inverse lists every Place in it, so expanding it in each
+      # Place's document would embed every other Place in the county, and the
+      # index would grow with the square of the county's size.
       #
       # `visited` (see #related) keeps a record from listing itself through a
       # relationship that points back at it.

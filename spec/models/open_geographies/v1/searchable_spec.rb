@@ -408,9 +408,8 @@ RSpec.describe(OpenGeographies::V1::Searchable) do
       expect(work_summary).not_to(have_key(:church))
     end
 
-    # A County's inverse lists every Place in it. Expanding it inside each of
-    # those Places' documents embedded every Place in the county into every
-    # other one, which grew the index quadratically (issue #5).
+    # A County's inverse lists every Place in it, so expanding it in each
+    # Place's document would embed every other Place in the county.
     it 'does not expand a related record\'s inverse relationships, so a place does not embed the other places in its county' do
       county_model = create(:place_model, project:)
       county = create(:place, project_model: county_model, name: 'Glynn County')

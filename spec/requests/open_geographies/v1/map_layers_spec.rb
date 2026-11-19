@@ -47,6 +47,15 @@ RSpec.describe('OpenGeographies::V1::MapLayers', type: :request) do
       expect(response).to(have_http_status(:ok))
       expect(response_json[:name]).to(eq('Hilliard 1917'))
     end
+
+    it 'does not send the cross-origin header' do
+      layer
+
+      OpenGeographies::V1::MapLayer.reindex(refresh: true)
+      get("/open_geographies/v1/#{project.name.parameterize}/map_layers/hilliard-1917")
+
+      expect(response.headers).not_to(have_key('Access-Control-Allow-Origin'))
+    end
   end
 
   describe 'GET /v1/:project/map_layers/:slug/annotation' do
@@ -57,6 +66,31 @@ RSpec.describe('OpenGeographies::V1::MapLayers', type: :request) do
 
       expect(response).to(have_http_status(:ok))
       expect(response.media_type).to(eq('application/json'))
+      expect(response.body).to(eq(annotation))
+    end
+
+    # Renderers load the page from the browser on another origin.
+    it 'allows any origin to read the page' do
+      create(:place_layer, place: layer, content: annotation)
+
+      get_annotation
+
+      expect(response.headers['Access-Control-Allow-Origin']).to(eq('*'))
+    end
+
+    it 'allows any origin to read a not found response' do
+      get_annotation('no-such-layer')
+
+      expect(response).to(have_http_status(:not_found))
+      expect(response.headers['Access-Control-Allow-Origin']).to(eq('*'))
+    end
+
+    it 'returns the first georeference place layer created when there are several' do
+      create(:place_layer, place: layer, content: annotation)
+      create(:place_layer, place: layer, content: JSON.generate('type' => 'AnnotationPage', 'items' => []))
+
+      get_annotation
+
       expect(response.body).to(eq(annotation))
     end
 

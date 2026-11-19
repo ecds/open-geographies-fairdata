@@ -3,17 +3,18 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [ main ]
+
+env:
+  RUBY_VERSION: "3.4"
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     env:
-      RUBY_VERSION: 3.4.3
       RUBOCOP_CACHE_ROOT: tmp/rubocop
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -34,3 +35,51 @@ jobs:
       - name: Lint code for consistent style
         run: bin/rubocop -f github
 
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RAILS_ENV: test
+
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+        env:
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+          xpack.security.enabled: false
+          discovery.type: single-node
+        options: >-
+          --health-cmd "curl -fs http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 9200:9200
+
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: Set up the test database
+        run: bundle exec rake db:create db:schema:load
+
+      - name: Run RSpec
+        run: bundle exec rspec --format progress

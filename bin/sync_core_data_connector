@@ -81,14 +81,14 @@ CONCERN_FILES = [
 ].freeze
 
 # Export::*, ImportAnalyze::*, Search::*, Reconcile::*, Authority::*,
-# Http::Requestable, Iiif::Manifest all live as whole namespace directories
+# Http::Requestable, Iiif::Manifest, Users::* all live as whole namespace directories
 # under app/services/core_data_connector/. Copied wholesale rather than
 # hand-picked file-by-file: Zeitwerk only loads a file when its constant is
 # actually referenced, so copying a namespace's orchestration/bulk-operation
 # siblings that the 18+8 classes never touch (Export::Exporter,
 # ImportAnalyze::Import, Reconcile::Manager, ...) is harmless, and safer than
 # trying to guess which files within each directory are load-bearing.
-SERVICE_NAMESPACES = ['export', 'import_analyze', 'search', 'reconcile', 'authority', 'http', 'iiif'].freeze
+SERVICE_NAMESPACES = ['export', 'import_analyze', 'search', 'reconcile', 'authority', 'http', 'iiif', 'users'].freeze
 
 # Every table a vendored model (or something it belongs_to/has_many's into)
 # actually touches - not just the 18+8 classes' own tables, but everything

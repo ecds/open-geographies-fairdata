@@ -276,7 +276,8 @@ module OpenGeographies
             value = relationship_value(item, rel, depth, visited)
           end
 
-          assign_unique!(related_records, promoted_key || raw_key, value)
+          key = promoted_key || (taxonomy_relationship?(rel) ? raw_key : unreserved_key(raw_key))
+          assign_unique!(related_records, key, value)
 
           # A taxonomy relationship that is not promoted has no explicit keyword
           # mapping, so its names would be indexed as analyzed text, which is
@@ -324,7 +325,7 @@ module OpenGeographies
           # term. Those are found by filtering on the term instead.
           next if taxonomy_relationship?(rel)
 
-          key = rel.inverse_name.parameterize.underscore.to_sym
+          key = unreserved_key(rel.inverse_name.parameterize.underscore.to_sym)
 
           if rel.inverse_multiple
             records = ::CoreDataConnector::Relationship.where(project_model_relationship: rel, related_record: self)
@@ -498,6 +499,14 @@ module OpenGeographies
       # from V1 models or through #related_class.
       def record_identity(record)
         [record.class.name, record.id]
+      end
+
+      # A relationship's key, moved to `<key>_2` when the mapping already types
+      # that key as a scalar (a relationship named "Preview" against the
+      # `preview` keyword). Its value is a nested record, which such a field
+      # rejects, failing the whole document.
+      def unreserved_key(key)
+        RESERVED_KEYS.include?(key) ? :"#{key}_2" : key
       end
 
       # Writes `value` at `key`, adding a numeric suffix (_2, _3, ...) when

@@ -77,6 +77,35 @@ RSpec.describe('V1 Place Elasticsearch indexing') do
     expect(find_by_slug('spring-hill')[:date_2]).to(eq({ 'label' => 'Date', 'value' => 'Spring 1890' }))
   end
 
+  it 'indexes a relationship named after a scalar property under <key>_2 without a mapping conflict' do
+    project = create(:project)
+    place_model = create(:place_model, project:)
+    place = create(:place, project_model: place_model, name: 'Sapelo Island')
+    media_model = create(:place_model, project:, model_class: 'CoreDataConnector::MediaContent')
+    map = create(:media_content, project_model: media_model, name: 'A plan of Sapelo 1760')
+    rel = create(
+      :project_model_relationship,
+      primary_model: place_model,
+      related_model: media_model,
+      name: 'Preview',
+      multiple: false,
+      allow_inverse: true,
+      inverse_name: 'Thumbnail',
+      inverse_multiple: false,
+    )
+    create(:relationship, project_model_relationship: rel, primary_record: place, related_record: map)
+
+    # The class-level reindex creates the index with its mapping; the media
+    # record is then added on its own, since a second class-level reindex
+    # would replace the shared index and drop the place.
+    OpenGeographies::V1::Place.reindex(refresh: true)
+    OpenGeographies::V1::MediaContent.find(map.id).reindex(refresh: true)
+
+    expect(find_by_slug('sapelo-island')[:preview_2]).to(include('name' => 'A plan of Sapelo 1760'))
+    media = OpenGeographies::V1::MediaContent.search('*', where: { slug: 'a-plan-of-sapelo-1760' }, load: false).first
+    expect(media[:thumbnail_2]).to(include('name' => 'Sapelo Island'))
+  end
+
   it 'does not map a date-looking text value as a date, so later text values still index' do
     project = create(:project)
     place_model = create(:place_model, project:)

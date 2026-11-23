@@ -65,7 +65,7 @@ group :development, :test do
   gem 'jwt_auth', git: 'https://github.com/performant-software/jwt-auth.git', tag: 'v0.1.3'
   gem 'pg', '~> 1.5.9'
   gem 'roo', '~> 2.10.0'
-  gem 'rspec-rails', '~> 8.0' # Use an appropriate version, check RSpec documentation
+  gem 'rspec-rails', '~> 8.1' # Use an appropriate version, check RSpec documentation
   gem 'rubocop-shopify'
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem 'rubocop-rails-omakase', require: false

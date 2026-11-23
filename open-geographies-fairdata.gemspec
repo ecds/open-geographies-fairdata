@@ -31,7 +31,7 @@ Gem::Specification.new do |spec|
   # assuming the host app happens to already have them bundled.
   spec.add_dependency('aws-sdk-cloudfront', '~> 1')
   spec.add_dependency('aws-sdk-s3', '~> 1')
-  spec.add_dependency('elasticsearch', '~> 8')
+  spec.add_dependency('elasticsearch', '>= 8', '< 10')
   spec.add_dependency('rails', '>= 8.0.2')
   spec.add_dependency('rgeo-geojson', '~> 2.2')
   spec.add_dependency('searchkick', '~> 5.4.0')

@@ -42,7 +42,7 @@ gem 'paper_trail', '>= 16.0'
 gem 'typhoeus', '~> 1.6'
 
 # Elasticsearch
-gem 'elasticsearch', '~> 8.0'
+gem 'elasticsearch', '~> 9.5'
 gem 'faraday-typhoeus', '~> 1.0' # Needed to use Elasticsearch in rake tasks.
 gem 'searchkick'
 

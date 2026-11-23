@@ -1,0 +1,111 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "schema": "https://schema.org/",
+    "og": "https://opengeographies.org/ns#",
+    "skos": "http://www.w3.org/2004/02/skos/core#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "uuid": "schema:identifier",
+    "slug": "og:slug",
+    "slugs": { "@id": "og:slug", "@container": "@set" },
+    "project": "og:project",
+    "project_id": "og:projectId",
+    "model_type": "og:modelType",
+    "model_id": "og:modelId",
+    "model_name": "og:modelName",
+    "visibility": "og:visibility",
+    "date_modified": { "@id": "schema:dateModified", "@type": "xsd:dateTime" },
+    "identifiers": {
+      "@id": "og:identifier",
+      "@container": "@set",
+      "@context": {
+        "authority": "schema:propertyID",
+        "identifier": "schema:value"
+      }
+    },
+
+    "name": "schema:name",
+    "names": { "@id": "schema:alternateName", "@container": "@set" },
+    "description": "schema:description",
+    "short_description": "schema:disambiguatingDescription",
+    "order": "schema:position",
+
+    "geo": {
+      "@id": "schema:geo",
+      "@context": {
+        "point": {
+          "@id": "og:point",
+          "@context": {
+            "lat": "schema:latitude",
+            "lon": "schema:longitude"
+          }
+        },
+        "shape": { "@id": "og:shape", "@type": "@json" }
+      }
+    },
+    "geojson": { "@id": "og:geojson", "@type": "@json" },
+    "bbox": { "@id": "og:bbox", "@type": "@json" },
+    "address": "schema:address",
+    "administrative_area": {
+      "@id": "og:administrativeArea",
+      "@context": {
+        "level": "og:adminLevel",
+        "geonames_id": "og:geonamesId",
+        "geonames_url": { "@id": "schema:sameAs", "@type": "@id" }
+      }
+    },
+    "contained_in_place": "schema:containedInPlace",
+    "temporal_coverage": "schema:temporalCoverage",
+    "types": { "@id": "og:type", "@container": "@set" },
+
+    "media": { "@id": "schema:associatedMedia", "@container": "@set" },
+    "featured_media": "og:featuredMedia",
+    "preview_media": "og:previewMedia",
+    "media_type": "og:mediaType",
+    "encoding_format": "schema:encodingFormat",
+    "content_url": { "@id": "schema:contentUrl", "@type": "@id" },
+    "embed_url": { "@id": "schema:embedUrl", "@type": "@id" },
+    "thumbnail": { "@id": "schema:thumbnailUrl", "@type": "@id" },
+    "preview": { "@id": "og:previewUrl", "@type": "@id" },
+    "manifest_url": { "@id": "og:iiifManifest", "@type": "@id" },
+    "duration": "og:durationSeconds",
+    "caption": "schema:caption",
+    "alt_text": "og:altText",
+    "content_warning": "og:contentWarning",
+    "upload_date": "schema:uploadDate",
+    "featured": "og:featured",
+    "creator": "schema:creator",
+    "publisher": "schema:publisher",
+
+    "works": { "@id": "og:work", "@container": "@set" },
+    "url": { "@id": "schema:url", "@type": "@id" },
+    "authors": "schema:author",
+    "date_published": "schema:datePublished",
+    "isbn": "schema:isbn",
+    "work_type": "og:workType",
+
+    "people": { "@id": "og:person", "@container": "@set" },
+    "job_title": "schema:jobTitle",
+    "affiliation": "schema:affiliation",
+    "birth_date": "schema:birthDate",
+    "death_date": "schema:deathDate",
+
+    "places": { "@id": "og:relatedPlace", "@container": "@set" },
+    "stops": { "@id": "og:stop", "@container": "@set" },
+
+    "map_layers": { "@id": "og:mapLayer", "@container": "@set" },
+    "date": "schema:dateCreated",
+    "bearing": "og:bearing",
+    "source": {
+      "@id": "og:source",
+      "@context": {
+        "type": "og:sourceType",
+        "urls": { "@id": "og:sourceUrl", "@type": "@id", "@container": "@set" }
+      }
+    },
+
+    "vocabulary": "og:vocabulary",
+    "parent": "skos:broader"
+  }
+}

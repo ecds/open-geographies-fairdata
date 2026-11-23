@@ -62,7 +62,7 @@ group :development, :test do
   gem 'database_cleaner'
   gem 'factory_bot_rails'
   gem 'faker'
-  gem 'jwt_auth', git: 'https://github.com/performant-software/jwt-auth.git', tag: 'v0.1.3'
+  gem 'jwt_auth', git: 'https://github.com/performant-software/jwt-auth.git', tag: 'v1.0.0'
   gem 'pg', '~> 1.5.9'
   gem 'roo', '~> 2.10.0'
   gem 'rspec-rails', '~> 8.0' # Use an appropriate version, check RSpec documentation

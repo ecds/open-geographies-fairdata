@@ -1,0 +1,16 @@
+default: &default
+  adapter: <%= ENV['DB_ADAPTER'] || 'postgis' %>
+  encoding: utf8
+  pool: 50
+  schema_search_path: "public,shared_extensions"
+  username: <%= ENV['DB_USERNAME'] || 'postgres'%>
+  host: <%= ENV['DB_HOSTNAME'] || 'localhost' %>
+  schema_search_path: public, postgis
+  password: <%= ENV['DB_PASSWORD'] || 'postgres' %>
+  database: <%= ENV['DB_NAME'] || 'open_geographies' %>
+
+test:
+  <<: *default
+
+development:
+  <<: *default

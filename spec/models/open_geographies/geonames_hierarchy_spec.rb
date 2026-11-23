@@ -1,0 +1,230 @@
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe(OpenGeographies::GeonamesHierarchy) do
+  # extendedFindNearbyJSON's real shape: a mix of "A" (administrative
+  # boundary) and "P" (populated place) features, most-specific-first. Only
+  # the "A" ones should survive .fetch - the "P" entry (the city/town
+  # itself) is redundant with the OG place's own name.
+  let(:geonames_response) do
+    {
+      'geonames' => [
+        { 'fcl' => 'P', 'fcode' => 'PPLA2', 'name' => 'Atlanta', 'geonameId' => 4180439 },
+        { 'fcl' => 'A', 'fcode' => 'ADM2', 'name' => 'Fulton County', 'geonameId' => 4219762 },
+        { 'fcl' => 'A', 'fcode' => 'ADM1', 'name' => 'Georgia', 'geonameId' => 4197000 },
+        { 'fcl' => 'A', 'fcode' => 'PCLI', 'name' => 'United States', 'geonameId' => 6252001 },
+      ],
+    }.to_json
+  end
+
+  around do |example|
+    original = ENV['GEONAMES_USERNAME']
+    ENV['GEONAMES_USERNAME'] = 'test_user'
+    example.run
+    ENV['GEONAMES_USERNAME'] = original
+  end
+
+  def stub_geonames(status: 200, body: geonames_response)
+    response = instance_double(Net::HTTPResponse, body:)
+    allow(response).to(receive(:is_a?).with(Net::HTTPSuccess).and_return(status == 200))
+    allow(Net::HTTP).to(receive(:start).and_return(response))
+    response
+  end
+
+  describe '.fetch' do
+    it 'keeps only administrative-boundary features, most-specific-first, with a built geonames_url' do
+      stub_geonames
+
+      result = described_class.fetch(lat: 33.749, lng: -84.388)
+
+      expect(result).to(eq([
+        { level: 'ADM2', name: 'Fulton County', geonames_id: '4219762', geonames_url: 'https://www.geonames.org/4219762' },
+        { level: 'ADM1', name: 'Georgia', geonames_id: '4197000', geonames_url: 'https://www.geonames.org/4197000' },
+        { level: 'PCLI', name: 'United States', geonames_id: '6252001', geonames_url: 'https://www.geonames.org/6252001' },
+      ]))
+    end
+
+    # GeoNames answers from its US Census street-level reverse geocoder when a
+    # point resolves close enough to a mapped address, which is the case for
+    # most building locations.
+    it 'parses the address shape (US Census street-level reverse-geocoding) when that answers instead' do
+      stub_geonames(body: {
+        'address' => {
+          'adminName2' => 'Grady',
+          'adminName1' => 'Georgia',
+          'countryCode' => 'US',
+          'street' => 'Meridian Rd',
+          'streetNumber' => '550',
+        },
+      }.to_json)
+
+      result = described_class.fetch(lat: 30.727751, lng: -84.136548)
+
+      expect(result).to(eq([
+        { level: 'ADM2', name: 'Grady', geonames_id: nil, geonames_url: nil },
+        { level: 'ADM1', name: 'Georgia', geonames_id: nil, geonames_url: nil },
+        { level: 'PCLI', name: 'US', geonames_id: nil, geonames_url: nil },
+      ]))
+    end
+
+    it 'skips blank fields in the address shape rather than emitting empty entries' do
+      stub_geonames(body: { 'address' => { 'adminName1' => 'Georgia', 'countryCode' => 'US' } }.to_json)
+
+      result = described_class.fetch(lat: 30.727751, lng: -84.136548)
+
+      expect(result).to(eq([
+        { level: 'ADM1', name: 'Georgia', geonames_id: nil, geonames_url: nil },
+        { level: 'PCLI', name: 'US', geonames_id: nil, geonames_url: nil },
+      ]))
+    end
+
+    it 'returns nil on a non-2xx response' do
+      stub_geonames(status: 500, body: 'error')
+      expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(be_nil)
+    end
+
+    it 'returns nil on a GeoNames error payload (200 OK with a status key, e.g. bad username)' do
+      stub_geonames(body: { 'status' => { 'message' => 'invalid username', 'value' => 10 } }.to_json)
+      expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(be_nil)
+    end
+
+    # Status 15 ("no result found") is a valid answer, not a failure. It returns
+    # [], the same as an empty geonames or address payload, so #lookup caches it.
+    it 'returns [] (not nil) on a "no result found" status, so #lookup can cache it' do
+      stub_geonames(body: { 'status' => { 'message' => 'no result found', 'value' => 15 } }.to_json)
+      expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(eq([]))
+    end
+
+    it 'still treats every other status code as a real failure (rate limit, auth, ...)' do
+      stub_geonames(body: { 'status' => { 'message' => 'the hourly limit of 1000 credits has been exceeded', 'value' => 19 } }.to_json)
+      expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(be_nil)
+    end
+
+    it 'returns nil rather than raising on a network failure' do
+      allow(Net::HTTP).to(receive(:start).and_raise(Net::OpenTimeout))
+      expect(described_class.fetch(lat: 33.749, lng: -84.388)).to(be_nil)
+    end
+  end
+
+  describe '.lookup' do
+    let(:place) { create(:place, project_model: create(:place_model)) }
+
+    it 'fetches and caches on a cold cache' do
+      stub_geonames
+      expect(Net::HTTP).to(receive(:start).once)
+
+      result = described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)
+
+      expect(result.first[:name]).to(eq('Fulton County'))
+      expect(described_class.find_by(place_id: place.id).hierarchy.first[:name]).to(eq('Fulton County'))
+    end
+
+    it 'reuses the cache when lat/lng have not moved - no second GeoNames call' do
+      stub_geonames
+      described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)
+
+      expect(Net::HTTP).not_to(receive(:start))
+      result = described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)
+      expect(result.first[:name]).to(eq('Fulton County'))
+    end
+
+    it 're-fetches when lat/lng moved (geometry changed)' do
+      stub_geonames
+      described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)
+
+      moved_response = { 'geonames' => [{ 'fcl' => 'A', 'fcode' => 'ADM1', 'name' => 'California', 'geonameId' => 5332921 }] }.to_json
+      stub_geonames(body: moved_response)
+
+      result = described_class.lookup(place_id: place.id, lat: 34.0, lng: -118.0)
+      expect(result.first[:name]).to(eq('California'))
+    end
+
+    it 'falls back to the stale cache on a live failure rather than losing the data' do
+      stub_geonames
+      described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)
+
+      allow(Net::HTTP).to(receive(:start).and_raise(Net::OpenTimeout))
+      result = described_class.lookup(place_id: place.id, lat: 34.0, lng: -118.0)
+
+      expect(result.first[:name]).to(eq('Fulton County'))
+    end
+
+    it 'returns [] on a cold cache with no fallback available' do
+      allow(Net::HTTP).to(receive(:start).and_raise(Net::OpenTimeout))
+      expect(described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)).to(eq([]))
+    end
+
+    # Two indexing jobs can both miss the cache for the same place. The first
+    # to finish writes the row while the second is still waiting on GeoNames.
+    it 'does not raise when another job caches the same place while this one is fetching' do
+      response = stub_geonames
+      allow(Net::HTTP).to(receive(:start) do
+        described_class.create!(place_id: place.id, lat: 33.749, lng: -84.388, hierarchy: [], fetched_at: Time.current)
+        response
+      end)
+
+      result = described_class.lookup(place_id: place.id, lat: 33.749, lng: -84.388)
+
+      expect(result.first[:name]).to(eq('Fulton County'))
+      expect(described_class.where(place_id: place.id).count).to(eq(1))
+      expect(described_class.find_by(place_id: place.id).hierarchy.first[:name]).to(eq('Fulton County'))
+    end
+
+    # The same race, with the other job's insert still uncommitted when this
+    # one saves. The uniqueness validation cannot see that row, so only the
+    # unique index on place_id catches the duplicate. This needs two real
+    # database connections, which transactional tests would merge into one.
+    context 'when the other job has not committed yet' do
+      self.use_transactional_tests = false
+
+      # No factories, since their rows would be committed. place_id has no
+      # foreign key, so any id works.
+      let(:place_id) { 987_654_321 }
+
+      after { described_class.where(place_id:).delete_all }
+
+      # Holds the other job's transaction open until this job's backend is
+      # blocked on its lock, so the interleaving does not depend on timing.
+      def wait_for_lock_wait(pid, connection)
+        deadline = 5.seconds.from_now
+        until Time.current > deadline
+          wait_type = connection.select_value("SELECT wait_event_type FROM pg_stat_activity WHERE pid = #{Integer(pid)}")
+          break if wait_type == 'Lock'
+
+          sleep(0.01)
+        end
+      end
+
+      it 'does not raise when the other job commits the same place first' do
+        response = stub_geonames
+        lookup_pid = described_class.connection.raw_connection.backend_pid
+        inserted = Queue.new
+        other_job = nil
+
+        allow(Net::HTTP).to(receive(:start) do
+          other_job = Thread.new do
+            described_class.connection_pool.with_connection do |connection|
+              described_class.transaction do
+                described_class.create!(place_id:, lat: 33.749, lng: -84.388, hierarchy: [], fetched_at: Time.current)
+                inserted << true
+                wait_for_lock_wait(lookup_pid, connection)
+              end
+            end
+          end
+          inserted.pop
+          response
+        end)
+
+        result = described_class.lookup(place_id:, lat: 33.749, lng: -84.388)
+        other_job.join
+
+        expect(result.first[:name]).to(eq('Fulton County'))
+        expect(described_class.where(place_id:).count).to(eq(1))
+        expect(described_class.find_by(place_id:).hierarchy.first[:name]).to(eq('Fulton County'))
+      ensure
+        other_job&.join
+      end
+    end
+  end
+end

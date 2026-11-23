@@ -1,0 +1,176 @@
+{
+  "name": "Open Geographies — canonical atlas template",
+  "version": "0.3.0",
+  "changelog": "0.3.0: converges this copy with the og_schema/ mirror's 0.2.1 delta - Map Layers' 'Preview' and Tours' 'Thumbnail' now promote to 'preview_media' instead of 'preview', fixing a duplicate-key collision with MediaContent#extras' own scalar 'preview' URL field. From this version, this file (not og_schema/) is the canonical copy. 0.2.0: added Places' 'Address' UDF (promote: address) - closes the previously-unreachable address mapping gap; structured geo faceting is administrative_area's job instead, derived server-side from the centroid, not curator-entered.",
+  "$comment": "The authoring layer of the OG canonical schema: the project_models the wizard creates. The format matches a Core Data project export (name / project_models / user_defined_fields / project_model_relationships), so it can be diffed against an export directly. OG extensions live under 'og' keys: og.promote maps a UDF or relationship onto a well-known envelope field the renderer depends on by name; og.intent marks field visibility (internal fields are never publicly indexed or rendered); og.optional marks modules an atlas may skip. Numeric ids are omitted because they are assigned at creation; relationships reference models by 'related_model' name.",
+
+  "project_models": [
+    {
+      "name": "Places",
+      "model_class": "CoreDataConnector::Place",
+      "og": { "role": "primary_place_model" },
+      "user_defined_fields": [
+        { "column_name": "Short Description", "data_type": "Text", "required": false, "searchable": true, "allow_multiple": false, "order": 0,
+          "og": { "intent": "displayable", "promote": "short_description" } },
+        { "column_name": "Description", "data_type": "RichText", "required": false, "searchable": true, "allow_multiple": false, "order": 1,
+          "og": { "intent": "displayable", "promote": "description" } },
+        { "column_name": "Address", "data_type": "String", "required": false, "searchable": true, "allow_multiple": false, "order": 2,
+          "og": { "intent": "displayable", "promote": "address", "$comment": "Display text only; structured locality/region/country faceting is administrative_area's job, derived server-side from the centroid - not curator-entered." } }
+      ],
+      "project_model_relationships": [
+        { "name": "Types", "related_model": "Types", "multiple": true, "allow_inverse": true, "inverse_name": "Places",
+          "og": { "promote": "types" } },
+        { "name": "Contained In", "related_model": "Places", "multiple": false, "allow_inverse": true, "inverse_name": "Contains",
+          "og": { "promote": "contained_in_place", "$comment": "Generalizes to county, state, region or parish." } },
+        { "name": "Media", "related_model": "Media", "multiple": true, "allow_inverse": true, "inverse_name": "Places",
+          "og": { "promote": "media" },
+          "user_defined_fields": [
+            { "column_name": "featured", "data_type": "Boolean", "required": false, "order": 0,
+              "og": { "intent": "displayable", "$comment": "Presentation hint on the relationship." } }
+          ] },
+        { "name": "Works", "related_model": "Works", "multiple": true, "allow_inverse": true, "inverse_name": "Places",
+          "og": { "promote": "works" } },
+        { "name": "People", "related_model": "People", "multiple": true, "allow_inverse": true, "inverse_name": "Places",
+          "og": { "promote": "people" } },
+        { "name": "Related Places", "related_model": "Places", "multiple": true, "allow_inverse": false,
+          "og": { "promote": "places" } },
+        { "name": "Map Layers", "related_model": "Map Layers", "multiple": true, "allow_inverse": true, "inverse_name": "Places",
+          "og": { "promote": "map_layers", "optional": true } }
+      ]
+    },
+
+    {
+      "name": "Media",
+      "model_class": "CoreDataConnector::MediaContent",
+      "og": { "$comment": "One media model for image, video, audio, pano and 3d. Uploaded media fills content urls natively (ActiveStorage/IIIF/Mux); externally hosted media fills Embed URL. Exactly one of the two must be present." },
+      "user_defined_fields": [
+        { "column_name": "Media Type", "data_type": "Select", "required": true, "searchable": true, "allow_multiple": false, "order": 0,
+          "options": ["image", "video", "audio", "pano", "model3d"],
+          "og": { "intent": "displayable", "promote": "media_type" } },
+        { "column_name": "Embed URL", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 1,
+          "og": { "intent": "displayable", "promote": "embed_url", "$comment": "Vimeo / YouTube / Matterport." } },
+        { "column_name": "Caption", "data_type": "RichText", "required": false, "searchable": true, "allow_multiple": false, "order": 2,
+          "og": { "intent": "displayable", "promote": "caption" } },
+        { "column_name": "Alt Text", "data_type": "Text", "required": false, "searchable": false, "allow_multiple": false, "order": 3,
+          "og": { "intent": "displayable", "promote": "alt_text" } },
+        { "column_name": "Duration", "data_type": "Number", "required": false, "searchable": false, "allow_multiple": false, "order": 4,
+          "og": { "intent": "displayable", "promote": "duration", "$comment": "Seconds; audio/video only." } }
+      ],
+      "project_model_relationships": [
+        { "name": "Creator", "related_model": "People", "multiple": false, "allow_inverse": true, "inverse_name": "Media",
+          "og": { "promote": "creator", "$comment": "The person or group that made the media, for example a photographer." } },
+        { "name": "Publisher", "related_model": "Organizations", "multiple": false, "allow_inverse": true, "inverse_name": "Media",
+          "og": { "promote": "publisher" } }
+      ]
+    },
+
+    {
+      "name": "Works",
+      "model_class": "CoreDataConnector::Work",
+      "og": { "$comment": "References and bibliography: things that point at content rather than being media. schema.org CreativeWork." },
+      "user_defined_fields": [
+        { "column_name": "Link", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 0,
+          "og": { "intent": "displayable", "promote": "url" } },
+        { "column_name": "Authors", "data_type": "String", "required": false, "searchable": true, "allow_multiple": true, "order": 1,
+          "og": { "intent": "displayable", "promote": "authors" } },
+        { "column_name": "Publisher", "data_type": "String", "required": false, "searchable": true, "allow_multiple": false, "order": 2,
+          "og": { "intent": "displayable", "promote": "publisher" } },
+        { "column_name": "Date Published", "data_type": "FuzzyDate", "required": false, "searchable": false, "allow_multiple": false, "order": 3,
+          "og": { "intent": "displayable", "promote": "date_published" } },
+        { "column_name": "Pages", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 4,
+          "og": { "intent": "displayable" } },
+        { "column_name": "Volume", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 5,
+          "og": { "intent": "displayable" } },
+        { "column_name": "Issue", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 6,
+          "og": { "intent": "displayable" } },
+        { "column_name": "ISBN", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 7,
+          "og": { "intent": "displayable", "promote": "isbn" } }
+      ],
+      "project_model_relationships": [
+        { "name": "Type", "related_model": "Work Types", "multiple": false, "allow_inverse": true, "inverse_name": "Works",
+          "og": { "promote": "work_type", "$comment": "Types of reference. A presentation hint such as Embeddable stays a taxonomy-term UDF and is not structural." } }
+      ]
+    },
+
+    {
+      "name": "People",
+      "model_class": "CoreDataConnector::Person",
+      "user_defined_fields": [
+        { "column_name": "Biography", "data_type": "RichText", "required": false, "searchable": true, "allow_multiple": false, "order": 0,
+          "og": { "intent": "displayable", "promote": "description" } },
+        { "column_name": "Job Title", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 1,
+          "og": { "intent": "displayable", "promote": "job_title" } },
+        { "column_name": "Affiliation", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 2,
+          "og": { "intent": "displayable", "promote": "affiliation" } }
+      ]
+    },
+
+    {
+      "name": "Organizations",
+      "model_class": "CoreDataConnector::Organization",
+      "user_defined_fields": [
+        { "column_name": "URL", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 0,
+          "og": { "intent": "displayable", "promote": "url" } }
+      ]
+    },
+
+    {
+      "name": "Map Layers",
+      "model_class": "CoreDataConnector::Place",
+      "og": { "optional": true, "$comment": "A georeferenced overlay, used by the time slider. It is Place-based because it carries spatial extent. Topo quads are included here as dated layers." },
+      "user_defined_fields": [
+        { "column_name": "Date", "data_type": "FuzzyDate", "required": false, "searchable": true, "allow_multiple": false, "order": 0,
+          "og": { "intent": "displayable", "promote": "date", "$comment": "Drives the time-slider." } },
+        { "column_name": "Bearing", "data_type": "Number", "required": false, "searchable": false, "allow_multiple": false, "order": 1,
+          "og": { "intent": "displayable", "promote": "bearing" } },
+        { "column_name": "Source Type", "data_type": "Select", "required": true, "searchable": false, "allow_multiple": false, "order": 2,
+          "options": ["wms", "iiif", "xyz", "pmtiles", "annotation"],
+          "og": { "intent": "displayable", "promote": "source.type" } },
+        { "column_name": "Source URLs", "data_type": "String", "required": true, "searchable": false, "allow_multiple": true, "order": 3,
+          "og": { "intent": "displayable", "promote": "source.urls", "$comment": "One typed source covering WMS resources and IIIF annotation pages." } },
+        { "column_name": "Description", "data_type": "RichText", "required": false, "searchable": true, "allow_multiple": false, "order": 4,
+          "og": { "intent": "displayable", "promote": "description" } }
+      ],
+      "project_model_relationships": [
+        { "name": "Preview", "related_model": "Media", "multiple": false, "allow_inverse": false,
+          "og": { "promote": "preview_media", "$comment": "A map layer's preview is a Media record. The promoted key is `preview_media` and not `preview`, which would collide with MediaContent#extras' own scalar 'preview' URL on the nested Media summary this relationship resolves to." } },
+        { "name": "Publisher", "related_model": "Organizations", "multiple": false, "allow_inverse": true, "inverse_name": "Map Layers",
+          "og": { "promote": "publisher" } }
+      ]
+    },
+
+    {
+      "name": "Types",
+      "model_class": "CoreDataConnector::Taxonomy",
+      "og": { "$comment": "The place-type vocabulary: the one taxonomy every atlas gets, because the promoted 'types' facet and map styling depend on it. Its terms are per-atlas data (for example 'Lighthouse' or 'Park'); the model is structural. All other vocabularies (Topics, Counties, Map Categories…) are added per atlas by the curator and surface via config, using this same model class." }
+    },
+
+    {
+      "name": "Work Types",
+      "model_class": "CoreDataConnector::Taxonomy",
+      "og": { "optional": true },
+      "user_defined_fields": [
+        { "column_name": "Embeddable", "data_type": "Boolean", "required": false, "searchable": false, "allow_multiple": false, "order": 0,
+          "og": { "intent": "displayable", "$comment": "A presentation hint kept as a term-level UDF. Optional, not structural." } }
+      ]
+    },
+
+    {
+      "name": "Tours",
+      "model_class": "CoreDataConnector::Instance",
+      "og": { "optional": true, "$comment": "Optional module (schema.org ItemList / TouristTrip). Consumed by the renderer and by Open Tour as an API client. Ordered stops via the relationship's order." },
+      "user_defined_fields": [
+        { "column_name": "Description", "data_type": "Text", "required": false, "searchable": true, "allow_multiple": false, "order": 0,
+          "og": { "intent": "displayable", "promote": "description" } },
+        { "column_name": "Link", "data_type": "String", "required": false, "searchable": false, "allow_multiple": false, "order": 1,
+          "og": { "intent": "displayable", "promote": "url" } }
+      ],
+      "project_model_relationships": [
+        { "name": "Stops", "related_model": "Places", "multiple": true, "allow_inverse": true, "inverse_name": "Tours",
+          "og": { "promote": "stops" } },
+        { "name": "Thumbnail", "related_model": "Media", "multiple": false, "allow_inverse": false,
+          "og": { "promote": "preview_media" } }
+      ]
+    }
+  ]
+}

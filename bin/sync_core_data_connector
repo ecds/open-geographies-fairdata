@@ -1,0 +1,323 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Vendors CoreDataConnector code from a local core-data-cloud checkout into
+# this engine's test dummy app (spec/dummy).
+#
+# CoreDataConnector used to be a separate gem, mounted into core-data-cloud as
+# an engine; the upstream vendor folded it directly into core-data-cloud's own
+# app tree instead, and core-data-cloud's copy has since genuinely diverged
+# from the last-published standalone gem tag this repo's Gemfile used to pin
+# (new concerns, a rewritten geometry algorithm, PaperTrail-based audit
+# logging - none of that exists in the old gem at all). Rather than track a
+# drifting external tag, this engine's dummy app now vendors a copy sourced
+# directly from whatever core-data-cloud actually has - so the test suite
+# runs against what's really deployed, not an increasingly-stale snapshot.
+#
+# Usage:
+#   bin/sync_core_data_connector /path/to/core-data-cloud
+#
+# Re-run this whenever core-data-cloud's CoreDataConnector code changes in a
+# way that matters to the OG engine, then re-run the verification steps in
+# spec/dummy/README.md.
+
+require 'fileutils'
+
+USAGE = 'Usage: bin/sync_core_data_connector /path/to/core-data-cloud'
+source_root = ARGV[0] || abort(USAGE)
+abort("#{source_root} doesn't look like a core-data-cloud checkout (no app/models/core_data_connector)") \
+  unless File.directory?(File.join(source_root, 'app/models/core_data_connector'))
+
+DUMMY_ROOT = File.expand_path('../spec/dummy', __dir__)
+
+# The 18 classes core-data-connector-open-geographies references directly,
+# plus everything their include/association graph pulls in transitively -
+# confirmed by direct inspection of core-data-cloud, not guessed. See the
+# sync plan this script was built from for the full trace.
+MODEL_CLASSES = [
+  'application_record',
+  'event',
+  'instance',
+  'item',
+  'media_content',
+  'organization',
+  'organization_name',
+  'person',
+  'person_name',
+  'place',
+  'place_geometry',
+  'place_layer',
+  'place_name',
+  'project',
+  'project_model',
+  'project_model_relationship',
+  'relationship',
+  'source_name',
+  'taxonomy',
+  'web_identifier',
+  'work',
+  'version',
+  'user',
+  'manifest',
+  'record_merge',
+  'web_authority',
+  'project_model_access',
+  'project_model_share',
+].freeze
+
+# Simple one-concept-per-file mixins under app/models/concerns/core_data_connector/.
+CONCERN_FILES = [
+  'auditable',
+  'display_nameable',
+  'fcc_importable',
+  'identifiable',
+  'manifestable',
+  'mergeable',
+  'nameable',
+  'ownable',
+  'publishable',
+  'relateable',
+  'sluggable',
+].freeze
+
+# Export::*, ImportAnalyze::*, Search::*, Reconcile::*, Authority::*,
+# Http::Requestable, Iiif::Manifest, Users::* all live as whole namespace directories
+# under app/services/core_data_connector/. Copied wholesale rather than
+# hand-picked file-by-file: Zeitwerk only loads a file when its constant is
+# actually referenced, so copying a namespace's orchestration/bulk-operation
+# siblings that the 18+8 classes never touch (Export::Exporter,
+# ImportAnalyze::Import, Reconcile::Manager, ...) is harmless, and safer than
+# trying to guess which files within each directory are load-bearing.
+SERVICE_NAMESPACES = ['export', 'import_analyze', 'search', 'reconcile', 'authority', 'http', 'iiif', 'users'].freeze
+
+# Every table a vendored model (or something it belongs_to/has_many's into)
+# actually touches - not just the 18+8 classes' own tables, but everything
+# their association graph reaches, confirmed live rather than guessed
+# (jobs/user_projects in particular: nothing raises a missing-constant error
+# for these, but they're real tables the old dummy schema already had and
+# core-data-cloud still has today, so something in the graph expects them).
+TARGET_TABLES = [
+  'core_data_connector_events',
+  'core_data_connector_instances',
+  'core_data_connector_items',
+  'core_data_connector_jobs',
+  'core_data_connector_media_contents',
+  'core_data_connector_organizations',
+  'core_data_connector_organization_names',
+  'core_data_connector_people',
+  'core_data_connector_person_names',
+  'core_data_connector_places',
+  'core_data_connector_place_geometries',
+  'core_data_connector_place_names',
+  'core_data_connector_place_layers',
+  'core_data_connector_projects',
+  'core_data_connector_project_models',
+  'core_data_connector_project_model_relationships',
+  'core_data_connector_relationships',
+  'core_data_connector_source_names',
+  'core_data_connector_taxonomies',
+  'core_data_connector_user_projects',
+  'core_data_connector_web_identifiers',
+  'core_data_connector_works',
+  'core_data_connector_users',
+  'core_data_connector_versions',
+  'core_data_connector_manifests',
+  'core_data_connector_record_merges',
+  'core_data_connector_web_authorities',
+  'core_data_connector_project_model_accesses',
+  'core_data_connector_project_model_shares',
+].freeze
+
+# Migrations with no content match against TARGET_TABLES at all - a bare
+# `enable_extension 'postgis'`, nothing that names any target table - but
+# that a real create_table(:core_data_connector_place_geometries) migration
+# still genuinely depends on running first. Content-matching alone silently
+# drops these: found live, the hard way - db:migrate on an empty database
+# (no schema.rb to shortcut-load from) failed with `type "geometry" does
+# not exist` because nothing had enabled the postgis extension yet. List
+# every such prerequisite explicitly by filename rather than trying to
+# infer them from content.
+EXTRA_MIGRATIONS = [
+  '20231106205334_enable_postgis_extension.core_data_connector.rb',
+].freeze
+
+def copy_file(src, dest)
+  FileUtils.mkdir_p(File.dirname(dest))
+  FileUtils.cp(src, dest)
+  puts "  #{dest.sub("#{Dir.pwd}/", "")}"
+end
+
+puts '0. Namespace config (lib/core_data_connector.rb)'
+# Not under app/ - easy to miss, and silently load-bearing: without the
+# `self.table_name_prefix` it defines on the CoreDataConnector module itself,
+# every vendored model falls back to Rails' bare (unprefixed) table name
+# ("projects" instead of "core_data_connector_projects") and every query
+# 500s with "relation ... does not exist". Found live the first time this
+# script's output was actually run against a fresh database.
+namespace_src = File.join(source_root, 'lib/core_data_connector.rb')
+if File.exist?(namespace_src)
+  copy_file(namespace_src, File.join(DUMMY_ROOT, 'lib/core_data_connector.rb'))
+else
+  puts '  SKIP (not found): lib/core_data_connector.rb'
+end
+
+puts "\n1. Model files"
+MODEL_CLASSES.each do |name|
+  src = File.join(source_root, 'app/models/core_data_connector', "#{name}.rb")
+  next puts("  SKIP (not found): #{name}.rb") unless File.exist?(src)
+
+  copy_file(src, File.join(DUMMY_ROOT, 'app/models/core_data_connector', "#{name}.rb"))
+end
+
+puts "\n2. Model-level concerns"
+CONCERN_FILES.each do |name|
+  src = File.join(source_root, 'app/models/concerns/core_data_connector', "#{name}.rb")
+  next puts("  SKIP (not found): #{name}.rb") unless File.exist?(src)
+
+  copy_file(src, File.join(DUMMY_ROOT, 'app/models/concerns/core_data_connector', "#{name}.rb"))
+end
+
+puts "\n3. Service-level concern namespaces (whole directories)"
+SERVICE_NAMESPACES.each do |ns|
+  src_dir = File.join(source_root, 'app/services/core_data_connector', ns)
+  next puts("  SKIP (not found): #{ns}/") unless File.directory?(src_dir)
+
+  dest_dir = File.join(DUMMY_ROOT, 'app/services/core_data_connector', ns)
+  FileUtils.rm_rf(dest_dir)
+  FileUtils.mkdir_p(File.dirname(dest_dir))
+  FileUtils.cp_r(src_dir, dest_dir)
+  puts "  #{dest_dir.sub("#{Dir.pwd}/", "")}/ (#{Dir.glob("#{src_dir}/**/*.rb").size} files)"
+end
+
+geometry_src = File.join(source_root, 'app/services/core_data_connector/geometry.rb')
+copy_file(geometry_src, File.join(DUMMY_ROOT, 'app/services/core_data_connector/geometry.rb')) if File.exist?(geometry_src)
+
+nameable_src = File.join(source_root, 'app/services/concerns/core_data_connector/export/nameable.rb')
+if File.exist?(nameable_src)
+  copy_file(nameable_src, File.join(DUMMY_ROOT, 'app/services/concerns/core_data_connector/export/nameable.rb'))
+end
+
+puts "\n4. Migrations (kept for history - NOT replayed against an empty db; see step 5)"
+old_migrations = Dir.glob(File.join(DUMMY_ROOT, 'db/migrate/*.core_data_connector.rb'))
+puts "  Removing #{old_migrations.size} old engine-sourced migrations"
+old_migrations.each { |f| FileUtils.rm(f) }
+
+matched = Dir.glob(File.join(source_root, 'db/migrate/*.rb')).select do |f|
+  content = File.read(f)
+  TARGET_TABLES.any? { |t| content.include?(t) } || EXTRA_MIGRATIONS.include?(File.basename(f))
+end
+puts "  Copying #{matched.size} migrations"
+matched.sort.each { |src| copy_file(src, File.join(DUMMY_ROOT, 'db/migrate', File.basename(src))) }
+
+# core-data-cloud's own migration history includes migrations from long
+# before its current schema - including DATA migrations that reference
+# tables (core_data_connector_source_titles, core_data_connector_names, ...)
+# dropped from the schema years ago. "Copy every migration that mentions a
+# target table, then replay them all from scratch on an empty db" is not
+# reliable for a history this long: found live, the hard way, as
+# PG::UndefinedTable errors partway through a from-scratch db:migrate.
+#
+# So db/migrate/ here is kept as historical record (normal Rails
+# convention, and useful if a *future* individual migration ever needs
+# porting by hand) but is NOT the mechanism that builds the dummy app's
+# test schema. That's schema.rb, below - db:schema:load, not db:migrate,
+# is the supported way to set up this dummy app's database.
+def extract_block(lines, start_index)
+  depth = 0
+  (start_index...lines.length).each do |i|
+    depth += 1 if lines[i] =~ /\bdo\b(\s*\|[^|]*\|)?\s*$/
+    depth -= 1 if lines[i].strip == 'end'
+    return lines[start_index..i] if depth.zero?
+  end
+  raise "unterminated do/end block starting at source line #{start_index + 1}"
+end
+
+puts "\n5. Schema (splicing current create_table blocks into spec/dummy/db/schema.rb)"
+
+schema_src_path = File.join(source_root, 'db/schema.rb')
+schema_dest_path = File.join(DUMMY_ROOT, 'db/schema.rb')
+abort("core-data-cloud's db/schema.rb not found at #{schema_src_path}") unless File.exist?(schema_src_path)
+
+source_lines = File.readlines(schema_src_path)
+result = File.readlines(schema_dest_path)
+
+# Pull each target table's CURRENT create_table block straight out of
+# core-data-cloud's own schema.rb, verbatim - this is the already-
+# consolidated, final column set, not a migration history to replay.
+source_blocks = {}
+source_lines.each_with_index do |line, i|
+  TARGET_TABLES.each do |table|
+    next if source_blocks.key?(table)
+    next unless line =~ /create_table\s+"#{table}"/
+
+    source_blocks[table] = extract_block(source_lines, i)
+  end
+end
+missing = TARGET_TABLES - source_blocks.keys
+abort("Couldn't find create_table blocks in core-data-cloud's schema.rb for: #{missing.join(", ")}") if missing.any?
+
+# Replace the dummy schema's existing block for each target table (stale,
+# possibly missing columns added since the dummy schema was last touched)
+# with the current one. Tables genuinely new since then (e.g.
+# core_data_connector_versions, added for PaperTrail) have no existing
+# block to replace - collected in new_tables and inserted afterward.
+replaced = []
+TARGET_TABLES.each do |table|
+  start_index = result.find_index { |l| l =~ /create_table\s+"#{table}"/ }
+  next unless start_index
+
+  old_block = extract_block(result, start_index)
+  result[start_index, old_block.size] = source_blocks[table]
+  replaced << table
+end
+
+new_tables = TARGET_TABLES - replaced
+if new_tables.any?
+  anchor = result.find_index { |l| l =~ /create_table\s+"core_data_connector_users"/ }
+  abort('No core_data_connector_users create_table block to anchor newly-added tables against') unless anchor
+
+  new_tables.each { |table| result.insert(anchor, *source_blocks[table], "\n") }
+end
+puts "  Replaced #{replaced.size} existing table blocks, inserted #{new_tables.size} new ones (#{new_tables.join(", ")})" \
+  if new_tables.any?
+puts "  Replaced #{replaced.size} existing table blocks" if new_tables.empty?
+
+# core-data-cloud enables a couple of extensions the dummy schema doesn't
+# need (pg_stat_statements is a server-level monitoring extension, nothing
+# any vendored model depends on) - only add ones actually missing here.
+EXTENSION_EXCLUDE = ['pg_stat_statements'].freeze
+source_extensions = source_lines.grep(/enable_extension\s+"/).filter_map { |l| l[/enable_extension\s+"([^"]+)"/, 1] }
+dest_extensions = result.grep(/enable_extension\s+"/).filter_map { |l| l[/enable_extension\s+"([^"]+)"/, 1] }
+missing_extensions = source_extensions - dest_extensions - EXTENSION_EXCLUDE
+if missing_extensions.any?
+  insert_at = result.find_index { |l| l =~ /enable_extension\s+"/ }
+  missing_extensions.each { |ext| result.insert(insert_at, "  enable_extension \"#{ext}\"\n") }
+  puts "  Added missing extension(s): #{missing_extensions.join(", ")}"
+end
+
+# Keep the schema version current with the highest migration timestamp
+# across BOTH migration directories that actually load into this dummy
+# app: the vendored core_data_connector migrations copied above, AND this
+# engine's own db/migrate (appended into the dummy app's migration paths
+# by the Rails::Engine initializer in lib/core_data_connector_open_geographies/engine.rb -
+# see that file's `initializer :append_migrations`). Using only the vendored
+# dir here silently produces a schema version LOWER than the engine's own
+# newest migration, which then shows up as "pending migrations" the moment
+# rails_helper's ActiveRecord::Migration.maintain_test_schema! check runs -
+# found live testing this exact script.
+engine_migrate_dir = File.expand_path('../db/migrate', __dir__)
+max_version = (Dir.glob(File.join(DUMMY_ROOT, 'db/migrate/*.rb')) + Dir.glob(File.join(engine_migrate_dir, '*.rb')))
+  .filter_map { |f| File.basename(f)[/\A(\d+)_/, 1] }.max
+result.each_index do |i|
+  next unless result[i] =~ /ActiveRecord::Schema\[[\d.]+\]\.define\(version:\s*[\d_]+\)/
+
+  result[i] = result[i].sub(/version:\s*[\d_]+/, "version: #{max_version}")
+end
+
+File.write(schema_dest_path, result.join)
+puts "  spec/dummy/db/schema.rb updated (version: #{max_version})"
+
+puts "\nDone. Next steps (run from spec/dummy - NOT the engine root, see spec/dummy/README.md):"
+puts '  cd spec/dummy && bundle install'
+puts '  RAILS_ENV=test bin/rails db:drop db:create db:schema:load'
+puts '  cd ../.. && bundle exec rspec'

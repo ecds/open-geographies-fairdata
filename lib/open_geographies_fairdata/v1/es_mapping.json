@@ -1,0 +1,309 @@
+{
+  "$comment": "Open Geographies canonical Elasticsearch mapping: the index layer of the schema. One mapping serves every atlas. The fixed envelope and the promoted fields are explicit properties. A non-promoted relationship (a curator-named relationship with no canonical target) has no explicit property, so the uuid, record_id and name sub-fields of its summary object are matched by field name, wherever they occur, by the relationship_uuid, relationship_record_id and relationship_name dynamic templates below. Scalar user-defined fields (raw {label, value} objects keyed by their parameterized column name) get a *_facet companion only for Select fields (searchable.rb#user_defined_fields), mapped by the facets_as_keyword template in the same way as a taxonomy relationship's *_facet companion. Every query is filtered server-side on project_id and visibility, and documents from internal-intent fields are never written to this index.",
+
+  "settings_comment": "searchkick_search and searchkick_search2 (under settings.analysis.analyzer) duplicate og_text instead of aliasing it. Passing a custom `settings:` to searchkick() (see V1::Searchable.searchable_index) replaces Searchkick's generated settings and does not merge with them, but Searchkick's query builder still uses those two analyzer names for any search term other than '*' (searchkick/query.rb). Without them, a text query fails with 'analyzer [searchkick_search] not found'. Keep all three in sync if og_text's tokenizer or filters change. This note is not a `$comment` key because `settings` is sent to Elasticsearch's index-settings API almost as written, and unknown setting keys are rejected.",
+
+  "mappings_comment": "The `analyzed` multi-field on name, names, description, short_description and address exists for Searchkick's query builder. A `q` full-text search goes through Searchkick's `.search(term, fields: [...])`, which always targets `<field>.analyzed` for a plain field and never the bare field (see searchkick/query.rb#set_fields). A raw Elasticsearch client can query the bare field directly, since its analyzer is already og_text. This note is not a `$comment` key inside mappings.properties because every key under `properties` is a field name, and Elasticsearch rejects a field definition that is not a mapping object.",
+
+  "slugs_comment": "Every `slug` has a `slugs` sibling, because base_search_data and summarize always emit both (slugs is the array of alternate URL slugs). `slugs` is mapped explicitly as a keyword. If it were not, it would fall through to the strings_as_text dynamic template and be analyzed as text, and the exact `where: { slugs: ... }` term filter that PlacesController#show uses to find a record by slug would match nothing.",
+
+  "stops_comment": "stops holds `order` (the relationship row's own order column; see #with_relationship_order in searchable.rb) and `geo.point` (the geo_point that every Place-derived summary carries, from #extras). The mapping has to match what is actually written. Elasticsearch does not reject a declared shape that nothing produces, because dynamic mapping adds the real fields alongside it, so a mismatch shows up only as fields missing from every stop.",
+
+  "order_comment": "`order` (media, works, people, places, map_layers, stops) is optional. It is the relationship row's own order column, and most relationships are never ordered, so it is nil. #with_relationship_order (searchable.rb) leaves the key out and does not write `order: null`, so a client should check whether the key is present. Items are already returned sorted by it (#related uses `.order(:order)`, and Postgres sorts nulls last, so unordered items come after ordered ones). `order` is included on each item so a client that filters, merges or re-sorts can recover the intended order.",
+
+  "dynamic_comment": "`date_detection` is off, so a text field whose first value looks like a date is not mapped as a date and does not refuse later text values. Explicit `date` properties are unaffected. The `nested_objects_unmapped` template leaves any object below the top level unmapped (`dynamic: false`): a relationship's copy of a related record, a fuzzy date's parts. Those values stay in _source and come back in responses, but cannot be searched, filtered or aggregated. This keeps every relationship from mapping its related record's fields again under its own key. Explicit properties and the top-level templates below are unaffected.",
+
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "og_text": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "asciifolding"]
+        },
+        "searchkick_search": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "asciifolding"]
+        },
+        "searchkick_search2": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "asciifolding"]
+        }
+      }
+    }
+  },
+
+  "mappings": {
+    "date_detection": false,
+    "dynamic_templates": [
+      {
+        "nested_objects_unmapped": {
+          "path_match": "*.*",
+          "match_mapping_type": "object",
+          "mapping": { "type": "object", "dynamic": false }
+        }
+      },
+      {
+        "facets_as_keyword": {
+          "match": "*_facet",
+          "mapping": { "type": "keyword", "ignore_above": 256 }
+        }
+      },
+      {
+        "relationship_uuid": {
+          "match": "uuid",
+          "match_mapping_type": "string",
+          "mapping": { "type": "keyword" }
+        }
+      },
+      {
+        "relationship_record_id": {
+          "match": "record_id",
+          "match_mapping_type": "string",
+          "mapping": { "type": "keyword" }
+        }
+      },
+      {
+        "relationship_name": {
+          "match": "name",
+          "match_mapping_type": "string",
+          "mapping": {
+            "type": "text",
+            "analyzer": "og_text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          }
+        }
+      },
+      {
+        "strings_as_text": {
+          "match_mapping_type": "string",
+          "mapping": { "type": "text", "analyzer": "og_text" }
+        }
+      }
+    ],
+
+    "properties": {
+      "uuid": { "type": "keyword" },
+      "slug": { "type": "keyword" },
+      "slugs": { "type": "keyword" },
+      "project_id": { "type": "keyword" },
+      "project": { "type": "keyword" },
+      "model_type": { "type": "keyword" },
+      "model_id": { "type": "keyword" },
+      "model_name": { "type": "keyword" },
+
+      "name": {
+        "type": "text",
+        "analyzer": "og_text",
+        "fields": {
+          "keyword": { "type": "keyword", "ignore_above": 256 },
+          "analyzed": { "type": "text", "analyzer": "og_text" }
+        }
+      },
+      "names": {
+        "type": "text",
+        "analyzer": "og_text",
+        "fields": { "analyzed": { "type": "text", "analyzer": "og_text" } }
+      },
+      "description": {
+        "type": "text",
+        "analyzer": "og_text",
+        "fields": { "analyzed": { "type": "text", "analyzer": "og_text" } }
+      },
+      "short_description": {
+        "type": "text",
+        "analyzer": "og_text",
+        "fields": { "analyzed": { "type": "text", "analyzer": "og_text" } }
+      },
+
+      "visibility": { "type": "keyword" },
+      "date_modified": { "type": "date" },
+      "identifiers": {
+        "properties": {
+          "authority": { "type": "keyword" },
+          "identifier": { "type": "keyword" }
+        }
+      },
+
+      "geo": {
+        "properties": {
+          "point": { "type": "geo_point" },
+          "shape": { "type": "geo_shape" }
+        }
+      },
+      "geojson": { "type": "object", "enabled": false },
+      "bbox": { "type": "double" },
+
+      "administrative_area": {
+        "properties": {
+          "level": { "type": "keyword" },
+          "name": { "type": "keyword" },
+          "geonames_id": { "type": "keyword" },
+          "geonames_url": { "type": "keyword", "index": false }
+        }
+      },
+
+      "types": { "type": "keyword" },
+      "contained_in_place": {
+        "properties": {
+          "uuid": { "type": "keyword" },
+          "name": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" }
+        }
+      },
+      "address": {
+        "type": "text",
+        "analyzer": "og_text",
+        "fields": { "analyzed": { "type": "text", "analyzer": "og_text" } }
+      },
+      "temporal_coverage": { "type": "date_range" },
+
+      "media_type": { "type": "keyword" },
+      "content_url": { "type": "keyword", "index": false },
+      "embed_url": { "type": "keyword", "index": false },
+      "thumbnail": { "type": "keyword", "index": false },
+      "preview": { "type": "keyword", "index": false },
+      "manifest_url": { "type": "keyword", "index": false },
+      "encoding_format": { "type": "keyword" },
+      "duration": { "type": "integer" },
+      "caption": { "type": "text", "analyzer": "og_text" },
+      "alt_text": { "type": "text", "analyzer": "og_text" },
+      "content_warning": { "type": "text", "analyzer": "og_text" },
+      "upload_date": { "type": "date" },
+      "featured": { "type": "boolean" },
+
+      "url": { "type": "keyword", "index": false },
+      "authors": { "type": "text", "analyzer": "og_text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "date_published": { "type": "date" },
+      "isbn": { "type": "keyword" },
+      "work_type": { "type": "keyword" },
+
+      "job_title": { "type": "keyword" },
+      "affiliation": { "type": "keyword" },
+      "birth_date": { "type": "date" },
+      "death_date": { "type": "date" },
+
+      "date": { "type": "date" },
+      "bearing": { "type": "double" },
+      "source": {
+        "properties": {
+          "type": { "type": "keyword" },
+          "urls": { "type": "keyword", "index": false }
+        }
+      },
+
+      "creator": {
+        "properties": {
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } }
+        }
+      },
+      "publisher": {
+        "properties": {
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } }
+        }
+      },
+      "vocabulary": { "type": "keyword" },
+      "parent": {
+        "properties": {
+          "uuid": { "type": "keyword" },
+          "name": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" }
+        }
+      },
+
+      "featured_media": {
+        "properties": {
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text" },
+          "media_type": { "type": "keyword" },
+          "thumbnail": { "type": "keyword", "index": false },
+          "content_url": { "type": "keyword", "index": false },
+          "embed_url": { "type": "keyword", "index": false }
+        }
+      },
+      "media": {
+        "properties": {
+          "order": { "type": "integer" },
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text" },
+          "media_type": { "type": "keyword" },
+          "thumbnail": { "type": "keyword", "index": false },
+          "content_url": { "type": "keyword", "index": false },
+          "embed_url": { "type": "keyword", "index": false },
+          "featured": { "type": "boolean" }
+        }
+      },
+      "works": {
+        "properties": {
+          "order": { "type": "integer" },
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text" },
+          "url": { "type": "keyword", "index": false },
+          "work_type": { "type": "keyword" }
+        }
+      },
+      "people": {
+        "properties": {
+          "order": { "type": "integer" },
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } }
+        }
+      },
+      "places": {
+        "properties": {
+          "order": { "type": "integer" },
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+          "geo": { "properties": { "point": { "type": "geo_point" } } }
+        }
+      },
+      "map_layers": {
+        "properties": {
+          "order": { "type": "integer" },
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text" },
+          "date": { "type": "date" },
+          "bbox": { "type": "geo_shape" },
+          "source": {
+            "properties": {
+              "type": { "type": "keyword" },
+              "urls": { "type": "keyword", "index": false }
+            }
+          }
+        }
+      },
+      "stops": {
+        "properties": {
+          "order": { "type": "integer" },
+          "uuid": { "type": "keyword" },
+          "slug": { "type": "keyword" },
+          "slugs": { "type": "keyword" },
+          "name": { "type": "text", "analyzer": "og_text" },
+          "geo": { "properties": { "point": { "type": "geo_point" } } }
+        }
+      }
+    }
+  }
+}

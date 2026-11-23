@@ -39,7 +39,7 @@ gem 'fuzzy_dates', git: 'https://github.com/performant-software/fuzzy-dates.git'
 # has_paper_trail call and Authority::*'s typhoeus requests silently never
 # loaded until these explicit lines were added.
 gem 'paper_trail', '>= 16.0'
-gem 'typhoeus', '~> 1.6'
+gem 'typhoeus', '~> 1.8'
 
 # Elasticsearch
 gem 'elasticsearch', '~> 8.0'

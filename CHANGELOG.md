@@ -34,6 +34,9 @@ documents in Elasticsearch and serves them through a read-only API.
     centroid and cached;
   - every document carries `@context`
     (`https://opengeographies.org/api/v1/context.json`).
+- **A draft JSON-LD context** (`lib/open_geographies_fairdata/v1/context.jsonld`)
+  that maps v1 fields to schema.org and an Open Geographies namespace. A spec
+  fails when a mapped field, a template key or a document key has no term.
 - **Elasticsearch mappings** for records (`es_mapping.json`) and map layers
   (`es_mapping_map_layers.json`), for Elasticsearch 8.
 - **Per-project indexes.** `OG_INDEX_LAYOUT` selects `shared`, `both` or
@@ -49,7 +52,11 @@ documents in Elasticsearch and serves them through a read-only API.
     its own;
   - `og_indexes:drop_orphans` deletes indexes of projects that no longer exist;
   - `og_pmtiles:create` builds and publishes a PMTiles file of an atlas's
-    places.
+    places, looked up by project id (`PROJECT_ID`), with options for
+    clustering (`--cluster-distance`, `0` turns it off; `--cluster-maxzoom`)
+    and the deepest zoom (`--maxzoom`).
+- **Vector tiles.** One `places` layer with a fixed set of properties for
+  every atlas, documented under "Vector tiles" in the README.
 - **Reindexing on change.** Saving a FairData record, or one of its
   relationships, reindexes the records whose documents include it.
 - **Migrations** for project model roles, the GeoNames cache and index

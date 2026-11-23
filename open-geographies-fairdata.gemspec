@@ -21,7 +21,7 @@ Gem::Specification.new do |spec|
   spec.metadata['changelog_uri'] = spec.homepage
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
-    Dir['{app,config,db,lib}/**/*', 'MIT-LICENSE', 'Rakefile', 'README.md']
+    Dir['{app,config,db,lib}/**/*', 'LICENSE', 'Rakefile', 'README.md']
   end
 
   # aws-sdk-s3/aws-sdk-cloudfront: og_pmtiles.rake's own S3 upload + CDN

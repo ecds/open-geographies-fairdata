@@ -48,7 +48,7 @@ gem 'searchkick'
 
 # Geospatial libraries
 gem 'aws-sdk'
-gem 'concurrent-ruby', '1.3.4'
+gem 'concurrent-ruby', '1.3.8'
 gem 'rgeo', '~> 3.0'
 gem 'rgeo-geojson', '~> 2.2'
 # spec/dummy/config/database.yml has always requested adapter: postgis, but

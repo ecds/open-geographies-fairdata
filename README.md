@@ -538,6 +538,120 @@ don't, and `media_type`/`embed_url` are never populated by any current code
 path. Left as-is pending a decision on which naming wins (the draft mapping's
 or the already-implemented extras) rather than picking one silently.
 
+## Vector tiles
+
+`og_pmtiles:create` builds a PMTiles file of an atlas's places, for drawing
+them on a map with MapLibre or any other client that reads Mapbox Vector
+Tiles. Every atlas's file has the same layer and properties, so a style
+written for one atlas works on another. A basemap (roads, land use, water)
+comes from a separate tileset; its layer names never collide with `places`.
+
+### The `places` layer
+
+Everything is in one layer, `places`. It holds three kinds of feature:
+
+- **Places:** the atlas's own places, as points, lines or polygons.
+- **Areas:** the places they're contained in (a county, a state), reached
+  through Contained In and its own Contained In in turn, marked
+  `contained_in: true`. They're never clustered.
+- **Clusters:** points that tippecanoe merged at low zooms, marked by
+  `clustered` and `point_count`.
+
+| Property | Type in the tile | What it is |
+| --- | --- | --- |
+| `uuid` | string | The record's UUID. Stable; use it as the feature's id. |
+| `slug` | string | The record's slug, for links to its page. It changes when the record is renamed. |
+| `name` | string | The record's name. |
+| `types` | string | The record's Types, as JSON text: `'["Church","Historical Site"]'`. See below. |
+| `admin_level` | string | An area's level from its Admin Level field, such as `ADM1` (state) or `ADM2` (county). |
+| `contained_in` | boolean | `true` on an area. Absent on the atlas's own places. |
+| `model_type`, `model_id`, `model_name` | string | The record's class and project model. |
+| `project` | string | The atlas's slug, as in the v1 API. |
+| `clustered`, `point_count`, `point_count_abbreviated`, `sqrt_point_count` | | Added by tippecanoe to a cluster. |
+
+A record whose geometry is a collection, such as an area with a boundary and
+a label point, appears once per part, each with the same properties.
+
+### Writing a style
+
+- **Matching a type.** Tippecanoe can't store a list in a tile, so it writes
+  `types` as JSON text. `["in", "Park", ["get", "types"]]` is then a search
+  for the letters "Park" and also matches "Parking Lot". Match the name with
+  its quotes, which is case-sensitive:
+
+  ```json
+  ["in", "\"Park\"", ["get", "types"]]
+  ```
+
+- **Matching a geometry.** MapLibre's `["geometry-type"]` returns `Point`,
+  `LineString` or `Polygon` only; a MultiLineString is a `LineString`. A filter
+  on `"MultiLineString"` matches nothing. Rivers drawn as lines:
+
+  ```json
+  ["all",
+    ["==", ["geometry-type"], "LineString"],
+    ["in", "\"River\"", ["get", "types"]]
+  ]
+  ```
+
+- **Telling the kinds apart:**
+
+  | Feature | Filter |
+  | --- | --- |
+  | A cluster | `["all", ["==", ["geometry-type"], "Point"], [">", ["coalesce", ["get", "point_count"], 1], 1]]` |
+  | A place | `["all", ["!=", ["get", "contained_in"], true], ["<=", ["coalesce", ["get", "point_count"], 1], 1]]` |
+  | An area's boundary | `["all", ["==", ["geometry-type"], "Polygon"], ["==", ["get", "contained_in"], true]]` |
+  | An area's label point | `["all", ["==", ["geometry-type"], "Point"], ["==", ["get", "contained_in"], true]]` |
+
+  A cluster keeps the properties of one of the places in it, including its
+  `name` and `types`, so a type filter matches clusters too. Filter clusters
+  out before labelling places or styling them by type.
+- **Lines and polygons.** The atlas's own lines (streams, roads) and polygons
+  (parks, islands) are in the tiles like its points. A style that only has
+  circle and symbol layers doesn't draw them.
+- **Feature ids.** A vector tile's feature id has to be a whole number, so
+  `uuid` can't be one. For hover and selection state per feature, set
+  `"promoteId": "uuid"` on the source.
+- **Zooming in.** Tiles stop at the deepest zoom they were built to (z8 is
+  common for a small atlas), and a client stretches those tiles at higher
+  zooms. Lines and polygons lose detail; build with a higher `--maxzoom` if
+  that matters.
+
+### Building
+
+```bash
+bin/rails og_pmtiles:create -- --project-id 2
+```
+
+Options can also be set as environment variables (`PROJECT_ID=2`, and so on).
+
+| Option | Variable | Default | |
+| --- | --- | --- | --- |
+| `--project-id ID` | `PROJECT_ID` | required | The atlas's project. |
+| `--place-model NAME` | `PLACE_MODEL` | `Places` | The project model whose places are exported. |
+| `--cluster-distance PIXELS` | `CLUSTER_DISTANCE` | `25` | How close, in pixels, points have to be to merge into a cluster. `0` turns clustering off. |
+| `--cluster-maxzoom ZOOM` | `CLUSTER_MAXZOOM` | `g` | The last zoom at which points cluster. `g` is one below the deepest zoom, so every place is separate there. |
+| `--maxzoom ZOOM` | `MAXZOOM` | `g` | The deepest zoom built. `g` lets tippecanoe choose from how close the places are. |
+| `--key NAME` | `S3_KEY` | `<atlas slug>.pmtiles` | The file's name on S3. |
+| `--bucket NAME` | `S3_BUCKET` | `ecds-pmtiles` | The S3 bucket. |
+| `--distribution ID` | `CLOUDFRONT_DISTRIBUTION_ID` | none | A CloudFront distribution to clear this file from after uploading. |
+| `--skip-upload` | `SKIP_UPLOAD=true` | | Build only; don't upload. |
+| `--output PATH` | `OUTPUT` | `tmp/og_pmtiles/<key>` with `--skip-upload` | Also keep the finished file here. |
+
+The defaults were tuned on an atlas of about 80 places spread across a state.
+A dense atlas, with thousands of places close together, will cluster far more
+at the same distance; try a smaller `--cluster-distance` or a lower
+`--cluster-maxzoom`. Without clustering every point is kept at every zoom,
+and a dense atlas can make tiles too large for tippecanoe.
+
+Each run builds in its own temporary directory, which is removed afterwards.
+The task needs `tippecanoe`, `tile-join`, `pmtiles` and `sqlite3` on the path,
+and AWS credentials that can write to the bucket (and invalidate the
+distribution) to upload.
+
+The file records how it was built. `pmtiles show <file> --metadata` prints the
+tippecanoe and tile-join commands under `generator_options`.
+
 ## Contributing
 
 Contribution directions go here.

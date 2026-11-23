@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'open3'
+require 'shellwords'
 require 'tempfile'
 require 'json'
 
@@ -58,13 +59,19 @@ module Tippecanoe
       end
     end
 
-    def pmtiles_merge(output: './merged.pmtiles', input: './*.pmtiles')
+    # Joins tilesets with tile-join. An Array input is passed as separate
+    # arguments, so paths are not split or expanded by a shell; a String is
+    # run through the shell, so a glob such as './*.pmtiles' works.
+    def pmtiles_merge(output: './merged.pmtiles', input: './*.pmtiles', extra_args: [])
       ensure_installed!
 
       raise IOError, "#{output} already exists." if File.exist?(output)
 
-      cmd = "tile-join -o #{output} #{input}"
-      run_command(cmd)
+      if input.is_a?(Array)
+        run_command(['tile-join', *extra_args.map(&:to_s), '-o', output.to_s, *input.map(&:to_s)])
+      else
+        run_command("tile-join #{extra_args.map { |arg| Shellwords.escape(arg.to_s) }.join(" ")} -o #{output} #{input}")
+      end
     end
 
     # Check tippecanoe availability

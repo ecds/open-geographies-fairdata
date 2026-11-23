@@ -58,7 +58,7 @@ gem 'activerecord-postgis-adapter', '~> 11.1'
 
 group :development, :test do
   gem 'bcrypt', '~> 3.1.22'
-  gem 'csv', '~> 3.3.5'
+  gem 'csv', '~> 3.3.7'
   gem 'database_cleaner'
   gem 'factory_bot_rails'
   gem 'faker'
